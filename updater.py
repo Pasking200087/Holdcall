@@ -95,8 +95,8 @@ def _download_asset(release: dict, dest_path: str) -> None:
 
 def apply_update() -> None:
     """
-    Скачать новый exe с GitHub и перезапустить через bat-скрипт.
-    Вызывается только из замороженного exe.
+    Скачать новый exe с GitHub и применить обновление через PowerShell:
+    убить процесс → удалить старый exe → переименовать новый → запустить.
     """
     if not getattr(sys, "frozen", False):
         return
@@ -111,15 +111,25 @@ def apply_update() -> None:
 
     _download_asset(release, new_tmp)
 
-    # PowerShell поддерживает Unicode-пути нативно (без проблем с кириллицей)
+    current_pid = os.getpid()
+
     ps = "\n".join([
-        "Start-Sleep -Seconds 3",
-        f'Move-Item -Force "{new_tmp}" "{exe_path}"',
-        f'if (Test-Path "{exe_path}") {{ Start-Process "{exe_path}" }}',
+        # Ждём 2 секунды на случай если процесс ещё не успел завершиться
+        "Start-Sleep -Seconds 2",
+        # Убиваем старый процесс по PID (на случай если sys.exit не отработал)
+        f"Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue",
+        "Start-Sleep -Seconds 1",
+        # Удаляем старый exe (файл уже не занят процессом)
+        f'Remove-Item "{exe_path}" -Force -ErrorAction SilentlyContinue',
+        # Переименовываем скачанный файл в baza.exe
+        f'Rename-Item "{new_tmp}" "{os.path.basename(exe_path)}"',
+        # Запускаем новую версию
+        f'Start-Process "{exe_path}"',
+        # Удаляем сам скрипт
         'Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue',
     ])
     ps_path = os.path.join(tempfile.gettempdir(), "baza_update.ps1")
-    with open(ps_path, "w", encoding="utf-8-sig") as f:  # UTF-8 с BOM — PowerShell читает правильно
+    with open(ps_path, "w", encoding="utf-8-sig") as f:
         f.write(ps)
 
     subprocess.Popen(
