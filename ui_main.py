@@ -6,7 +6,8 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView,
     QPushButton, QLineEdit, QComboBox, QLabel,
     QAbstractItemView, QMessageBox, QStatusBar,
-    QAction, QMenuBar, QMenu, QFrame, QSizePolicy, QCheckBox
+    QAction, QMenuBar, QMenu, QFrame, QSizePolicy, QCheckBox,
+    QSystemTrayIcon, QApplication,
 )
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
@@ -56,8 +57,16 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 600)
         self.resize(1280, 720)
         self._contacts: list[dict] = []
+        self._force_quit = False
+
+        from ui_splash import make_app_icon
+        self._icon = make_app_icon(64)
+        self.setWindowIcon(self._icon)
+        QApplication.instance().setWindowIcon(self._icon)
+
         self._build_menu()
         self._build_ui()
+        self._build_tray()
         self._refresh()
 
         # Авто-обновление таблицы каждые 30 секунд
@@ -71,6 +80,39 @@ class MainWindow(QMainWindow):
         self._update_timer.start(10 * 60 * 1000)
         self._update_checker = None
         self._check_update_bg()
+
+    # ─── ТРЕЙ ────────────────────────────────────────────────────────────────
+
+    def _build_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self._tray = QSystemTrayIcon(self._icon, self)
+        self._tray.setToolTip(APP_NAME)
+
+        menu = QMenu()
+        act_show = QAction("Открыть", self)
+        act_show.triggered.connect(self._tray_show)
+        act_exit = QAction("Выход", self)
+        act_exit.triggered.connect(self._quit_app)
+        menu.addAction(act_show)
+        menu.addSeparator()
+        menu.addAction(act_exit)
+        self._tray.setContextMenu(menu)
+        self._tray.activated.connect(self._tray_activated)
+        self._tray.show()
+
+    def _tray_show(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self._tray_show()
+
+    def _quit_app(self):
+        self._force_quit = True
+        self.close()
 
     # ─── МЕНЮ ────────────────────────────────────────────────────────────────
 
@@ -508,6 +550,19 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event):
+        tray_ok = hasattr(self, "_tray") and self._tray.isVisible()
+        if tray_ok and not self._force_quit:
+            event.ignore()
+            self.hide()
+            self._tray.showMessage(
+                APP_NAME,
+                "Программа свёрнута в трей. Для выхода щёлкните правой кнопкой на иконке.",
+                QSystemTrayIcon.Information,
+                3000,
+            )
+            return
         self._timer.stop()
         self._update_timer.stop()
+        if hasattr(self, "_tray"):
+            self._tray.hide()
         event.accept()

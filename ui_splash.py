@@ -1,9 +1,72 @@
 """
-ui_splash.py — Экран приветствия (сплэш-скрин)
+ui_splash.py — Экран приветствия (сплэш-скрин) + общий логотип приложения
 """
 from PyQt5.QtWidgets import QWidget, QApplication
-from PyQt5.QtGui import (QPainter, QColor, QFont, QPen, QPainterPath)
+from PyQt5.QtGui import (QPainter, QColor, QFont, QPen, QPainterPath,
+                          QPixmap, QIcon)
 from PyQt5.QtCore import Qt, QRectF
+
+
+def draw_logo(painter: QPainter, x: int, y: int, size: int) -> None:
+    """Рисует логотип приложения в заданной области.  Используется в сплэше, трее и заголовке."""
+    painter.save()
+    painter.setPen(Qt.NoPen)
+
+    # Фоновый круг
+    painter.setBrush(QColor("#1A252F"))
+    painter.drawEllipse(x, y, size, size)
+
+    # Три яруса цилиндрической БД
+    cx = x + size // 2
+    cyl_w = int(size * 0.58)
+    ey = int(size * 0.105)
+    cyl_body_h = int(size * 0.10)
+    gap = int(size * 0.035)
+
+    tiers = [
+        ("#76D7EA", "#3498DB", "#2471A3"),
+        ("#7DCEA0", "#27AE60", "#1E8449"),
+        ("#F1948A", "#E74C3C", "#CB4335"),
+    ]
+    n = len(tiers)
+    total_h = n * (ey + cyl_body_h) + (n - 1) * gap
+    start_y = y + int((size - total_h) * 0.42)
+
+    for i, (top_c, side_c, bot_c) in enumerate(tiers):
+        cy_top = start_y + i * (ey + cyl_body_h + gap)
+        rx = cx - cyl_w // 2
+        painter.setBrush(QColor(side_c))
+        painter.drawRect(rx, cy_top + ey // 2, cyl_w, cyl_body_h)
+        painter.setBrush(QColor(bot_c))
+        painter.drawEllipse(rx, cy_top + cyl_body_h, cyl_w, ey)
+        painter.setBrush(QColor(top_c))
+        painter.drawEllipse(rx, cy_top, cyl_w, ey)
+
+    # Бейдж с телефоном
+    br = int(size * 0.22)
+    bx = x + size - br + 3
+    by = y + size - br + 3
+    painter.setBrush(QColor("#27AE60"))
+    painter.setPen(QPen(QColor("#1A252F"), max(1, size // 45)))
+    painter.drawEllipse(bx - br, by - br, br * 2, br * 2)
+    painter.setPen(QColor("#FFFFFF"))
+    f = QFont("Segoe UI", max(6, int(br * 0.95)))
+    f.setBold(True)
+    painter.setFont(f)
+    painter.drawText(QRectF(bx - br, by - br, br * 2, br * 2), Qt.AlignCenter, "☎")
+
+    painter.restore()
+
+
+def make_app_icon(size: int = 64) -> QIcon:
+    """Возвращает QIcon с логотипом нужного размера."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    draw_logo(p, 0, 0, size)
+    p.end()
+    return QIcon(pm)
 
 
 class SplashScreen(QWidget):
@@ -123,61 +186,4 @@ class SplashScreen(QWidget):
     # ─────────────────────────────────────────────────────────────────────
 
     def _draw_logo(self, p: QPainter, x: int, y: int, size: int):
-        """Рисует логотип: тёмный круг + три яруса БД + телефонный бейдж."""
-        p.save()
-
-        # ── background disc ───────────────────────────────────────────────
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor("#1A252F"))
-        p.drawEllipse(x, y, size, size)
-
-        # ── database cylinders (3 tier) ───────────────────────────────────
-        cx = x + size // 2
-        cyl_w = int(size * 0.58)
-        ey = int(size * 0.105)        # ellipse rim height
-        cyl_body_h = int(size * 0.10)  # body rect height per tier
-        gap = int(size * 0.035)
-
-        tiers = [
-            ("#76D7EA", "#3498DB", "#2471A3"),   # blue
-            ("#7DCEA0", "#27AE60", "#1E8449"),   # green
-            ("#F1948A", "#E74C3C", "#CB4335"),   # red
-        ]
-        n = len(tiers)
-        total_h = n * (ey + cyl_body_h) + (n - 1) * gap
-        start_y = y + int((size - total_h) * 0.42)
-
-        for i, (top_c, side_c, bot_c) in enumerate(tiers):
-            cy_top = start_y + i * (ey + cyl_body_h + gap)
-            rx = cx - cyl_w // 2
-
-            # cylinder side fill
-            p.setBrush(QColor(side_c))
-            p.setPen(Qt.NoPen)
-            p.drawRect(rx, cy_top + ey // 2, cyl_w, cyl_body_h)
-
-            # bottom ellipse (shadow)
-            p.setBrush(QColor(bot_c))
-            p.drawEllipse(rx, cy_top + cyl_body_h, cyl_w, ey)
-
-            # top ellipse (highlight)
-            p.setBrush(QColor(top_c))
-            p.drawEllipse(rx, cy_top, cyl_w, ey)
-
-        # ── phone badge (bottom-right) ────────────────────────────────────
-        br = int(size * 0.22)
-        bx = x + size - br + 3
-        by = y + size - br + 3
-
-        p.setBrush(QColor("#27AE60"))
-        p.setPen(QPen(QColor("#1A252F"), 2))
-        p.drawEllipse(bx - br, by - br, br * 2, br * 2)
-
-        p.setPen(QColor("#FFFFFF"))
-        f = QFont("Segoe UI", int(br * 0.95))
-        f.setBold(True)
-        p.setFont(f)
-        p.drawText(QRectF(bx - br, by - br, br * 2, br * 2),
-                   Qt.AlignCenter, "☎")
-
-        p.restore()
+        draw_logo(p, x, y, size)
