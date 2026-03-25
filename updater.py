@@ -64,17 +64,31 @@ def check_update() -> Optional[str]:
     return None
 
 
+class _StripAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    """При редиректе (на CDN) убирает Authorization, чтобы не получить 404."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req:
+            new_req.headers.pop("Authorization", None)
+            new_req.headers.pop("authorization", None)
+        return new_req
+
+
 def _download_asset(release: dict, dest_path: str) -> None:
-    """Скачать baza.exe из assets релиза."""
+    """Скачать baza.exe из assets релиза (работает с приватным репозиторием)."""
     assets = release.get("assets", [])
     asset = next((a for a in assets if a["name"] == _ASSET_NAME), None)
     if not asset:
         raise RuntimeError(f"Файл {_ASSET_NAME} не найден в релизе")
 
-    download_url = asset["browser_download_url"]
-    # Без Authorization — CDN GitHub возвращает 404 если токен передаётся при редиректе
-    req = urllib.request.Request(download_url)
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    # Запрашиваем через API URL с токеном; на редиректе в CDN токен снимается
+    api_url = asset["url"]
+    req = urllib.request.Request(api_url, headers={
+        **_headers(),
+        "Accept": "application/octet-stream",
+    })
+    opener = urllib.request.build_opener(_StripAuthOnRedirect)
+    with opener.open(req, timeout=60) as resp:
         with open(dest_path, "wb") as f:
             shutil.copyfileobj(resp, f)
 
