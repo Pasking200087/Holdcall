@@ -14,7 +14,7 @@ from typing import Optional
 from config import APP_VERSION, GITHUB_REPO
 
 try:
-    from secrets import GITHUB_TOKEN
+    from gh_token import GITHUB_TOKEN
 except ImportError:
     GITHUB_TOKEN = ""
 

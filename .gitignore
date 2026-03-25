@@ -25,5 +25,5 @@ Thumbs.db
 desktop.ini
 
 # Секреты (токены — не в репо)
-secrets.py
+gh_token.py
 update/

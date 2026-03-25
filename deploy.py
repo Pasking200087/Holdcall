@@ -9,7 +9,7 @@ import urllib.request
 import urllib.error
 
 try:
-    from secrets import GITHUB_TOKEN
+    from gh_token import GITHUB_TOKEN
 except ImportError:
     GITHUB_TOKEN = ""
 

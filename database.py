@@ -3,6 +3,7 @@ database.py — SQLite база данных: схема, подключение
 """
 import sqlite3
 import os
+import threading
 from datetime import datetime
 from typing import Optional
 
@@ -13,7 +14,6 @@ import crypto
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")   # Параллельный доступ
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -60,8 +60,14 @@ def init_db() -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_contacts_deleted ON contacts(is_deleted);
-            CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts);
+            CREATE INDEX IF NOT EXISTS idx_contacts_status  ON contacts(status);
+            CREATE INDEX IF NOT EXISTS idx_audit_ts         ON audit_log(ts);
         """)
+        conn.commit()
+
+        # WAL + быстрая запись — устанавливается один раз, сохраняется в файле БД
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.commit()
 
         # Миграции для старых БД
@@ -69,6 +75,7 @@ def init_db() -> None:
             "ALTER TABLE contacts ADD COLUMN position TEXT DEFAULT ''",
             "ALTER TABLE contacts ADD COLUMN contact_type TEXT NOT NULL DEFAULT 'person'",
             "ALTER TABLE users ADD COLUMN session_token TEXT DEFAULT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_users_session ON users(session_token)",
         ]:
             try:
                 conn.execute(migration)
@@ -207,33 +214,39 @@ def _decrypt_row(row: sqlite3.Row) -> dict:
 
 def get_contacts(search: str = "", status_filter: str = "",
                  type_filter: str = "") -> list[dict]:
+    # Фильтры по незашифрованным полям — отдаём в SQL, не расшифровываем лишнее
+    where = "WHERE c.is_deleted=0"
+    params: list = []
+    if status_filter:
+        where += " AND c.status=?"
+        params.append(status_filter)
+    if type_filter:
+        where += " AND c.contact_type=?"
+        params.append(type_filter)
+
     conn = get_connection()
     try:
         rows = conn.execute(
             "SELECT c.*, u.full_name as caller_name, u.username as caller_username "
             "FROM contacts c "
             "LEFT JOIN users u ON c.called_by = u.id "
-            "WHERE c.is_deleted=0 "
-            "ORDER BY c.call_date DESC, c.id DESC"
+            f"{where} "
+            "ORDER BY c.call_date DESC, c.id DESC",
+            params
         ).fetchall()
     finally:
         conn.close()
 
+    if not search:
+        return [_decrypt_row(r) for r in rows]
+
+    # Поиск — только по расшифрованным полям
+    s = search.lower()
     result = []
     for row in rows:
         d = _decrypt_row(row)
-        # Фильтрация по поиску (после расшифровки)
-        if search:
-            s = search.lower()
-            if not (s in d["name"].lower() or
-                    s in d["phone"].lower() or
-                    s in d["company"].lower()):
-                continue
-        if status_filter and d["status"] != status_filter:
-            continue
-        if type_filter and d.get("contact_type", CONTACT_PERSON) != type_filter:
-            continue
-        result.append(d)
+        if s in d["name"].lower() or s in d["phone"].lower() or s in d["company"].lower():
+            result.append(d)
     return result
 
 
@@ -361,15 +374,22 @@ def get_contacts_count() -> dict:
 # ─── AUDIT LOG ─────────────────────────────────────────────────────────────
 
 def log_action(user_id: int, action: str, details: str = "") -> None:
-    conn = get_connection()
-    try:
-        conn.execute(
-            "INSERT INTO audit_log (user_id, action, details, ts) VALUES (?,?,?,?)",
-            (user_id, action, details, _now())
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    """Запись в лог — асинхронно, не блокирует UI."""
+    ts = _now()
+    def _write():
+        try:
+            conn = get_connection()
+            try:
+                conn.execute(
+                    "INSERT INTO audit_log (user_id, action, details, ts) VALUES (?,?,?,?)",
+                    (user_id, action, details, ts)
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    threading.Thread(target=_write, daemon=True).start()
 
 
 def get_audit_log(limit: int = 500) -> list:
