@@ -69,7 +69,8 @@ def _download_asset(release: dict, dest_path: str) -> None:
         raise RuntimeError(f"Файл {_ASSET_NAME} не найден в релизе")
 
     download_url = asset["browser_download_url"]
-    req = urllib.request.Request(download_url, headers=_headers())
+    # Без Authorization — CDN GitHub возвращает 404 если токен передаётся при редиректе
+    req = urllib.request.Request(download_url)
     with urllib.request.urlopen(req, timeout=60) as resp:
         with open(dest_path, "wb") as f:
             shutil.copyfileobj(resp, f)
