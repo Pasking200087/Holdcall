@@ -111,19 +111,20 @@ def apply_update() -> None:
 
     _download_asset(release, new_tmp)
 
-    bat = (
-        "@echo off\n"
-        "ping 127.0.0.1 -n 3 >nul\n"
-        f"move /y \"{new_tmp}\" \"{exe_path}\"\n"
-        f"start \"\" \"{exe_path}\"\n"
-        "del \"%~f0\"\n"
-    )
-    bat_path = os.path.join(tempfile.gettempdir(), "baza_update.bat")
-    with open(bat_path, "w", encoding="ascii", errors="replace") as f:
-        f.write(bat)
+    # PowerShell поддерживает Unicode-пути нативно (без проблем с кириллицей)
+    ps = "\n".join([
+        "Start-Sleep -Seconds 3",
+        f'Move-Item -Force "{new_tmp}" "{exe_path}"',
+        f'if (Test-Path "{exe_path}") {{ Start-Process "{exe_path}" }}',
+        'Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue',
+    ])
+    ps_path = os.path.join(tempfile.gettempdir(), "baza_update.ps1")
+    with open(ps_path, "w", encoding="utf-8-sig") as f:  # UTF-8 с BOM — PowerShell читает правильно
+        f.write(ps)
 
     subprocess.Popen(
-        ["cmd", "/c", bat_path],
+        ["powershell.exe", "-ExecutionPolicy", "Bypass",
+         "-WindowStyle", "Hidden", "-File", ps_path],
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
     sys.exit(0)
