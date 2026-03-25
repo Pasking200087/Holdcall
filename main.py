@@ -15,32 +15,6 @@ _app: QApplication = None
 _main_window = None
 
 
-def _check_update():
-    """Проверить обновление и предложить пользователю установить."""
-    import updater
-    new_ver = updater.check_update()
-    if not new_ver:
-        return
-    from config import APP_VERSION
-    reply = QMessageBox.question(
-        None,
-        "Доступно обновление",
-        f"Доступна новая версия программы: {new_ver}\n"
-        f"Текущая версия: {APP_VERSION}\n\n"
-        f"Обновить сейчас?",
-        QMessageBox.Yes | QMessageBox.No,
-        QMessageBox.Yes,
-    )
-    if reply == QMessageBox.Yes:
-        try:
-            updater.apply_update()
-        except Exception as e:
-            QMessageBox.warning(
-                None, "Ошибка обновления",
-                f"Не удалось применить обновление:\n{e}"
-            )
-
-
 def restart_login():
     """Показать окно логина снова (после logout)."""
     _show_login()
@@ -92,7 +66,6 @@ def main():
         )
         sys.exit(1)
 
-    _check_update()
     _show_login()
     sys.exit(_app.exec_())
 

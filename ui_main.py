@@ -47,10 +47,16 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._refresh()
 
-        # Авто-обновление каждые 30 секунд (для второго пользователя)
+        # Авто-обновление таблицы каждые 30 секунд
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(30_000)
+
+        # Проверка обновлений: сразу при открытии и затем каждые 10 минут
+        self._update_timer = QTimer(self)
+        self._update_timer.timeout.connect(self._check_update_bg)
+        self._update_timer.start(10 * 60 * 1000)
+        self._check_update_bg()
 
     # ─── МЕНЮ ────────────────────────────────────────────────────────────────
 
@@ -174,6 +180,27 @@ class MainWindow(QMainWindow):
         top.addWidget(self.btn_call)
 
         root.addLayout(top)
+
+        # Баннер обновления (скрыт по умолчанию)
+        self._update_bar = QFrame()
+        self._update_bar.setStyleSheet(
+            "QFrame { background: #FFF3CD; border: 1px solid #FFEAA7; border-radius: 4px; }"
+        )
+        ub_layout = QHBoxLayout(self._update_bar)
+        ub_layout.setContentsMargins(12, 6, 12, 6)
+        self._update_bar_label = QLabel()
+        self._update_bar_label.setStyleSheet("font-weight: bold; color: #856404;")
+        ub_layout.addWidget(self._update_bar_label)
+        ub_layout.addStretch()
+        btn_do_update = QPushButton("Обновить сейчас")
+        btn_do_update.setObjectName("success")
+        btn_do_update.clicked.connect(self._on_apply_update)
+        ub_layout.addWidget(btn_do_update)
+        btn_later = QPushButton("Позже")
+        btn_later.clicked.connect(self._update_bar.hide)
+        ub_layout.addWidget(btn_later)
+        self._update_bar.hide()
+        root.addWidget(self._update_bar)
 
         # Таблица
         self.table = QTableWidget()
@@ -421,11 +448,35 @@ class MainWindow(QMainWindow):
         db.log_action(auth.Session.user_id, "LOGOUT", "Выход из системы")
         auth.logout()
         self._timer.stop()
+        self._update_timer.stop()
         self.close()
 
         # Показать снова окно логина
         from main import restart_login
         restart_login()
+
+    # ─── ОБНОВЛЕНИЕ ──────────────────────────────────────────────────────────
+
+    def _check_update_bg(self):
+        try:
+            import updater
+            new_ver = updater.check_update()
+            if new_ver:
+                self._update_bar_label.setText(
+                    f"Доступна новая версия {new_ver}. "
+                    "После обновления программа перезапустится автоматически."
+                )
+                self._update_bar.show()
+        except Exception:
+            pass
+
+    def _on_apply_update(self):
+        import updater
+        try:
+            updater.apply_update()
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка обновления",
+                                f"Не удалось применить обновление:\n{e}")
 
     # ─── СТАТУС ──────────────────────────────────────────────────────────────
 
@@ -442,4 +493,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._timer.stop()
+        self._update_timer.stop()
         event.accept()
