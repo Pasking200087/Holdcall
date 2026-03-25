@@ -1,0 +1,25 @@
+# База данных и ключ шифрования (секретные данные — не в репо)
+baza.db
+baza.key
+*.db
+*.key
+
+# Сессии
+session.json
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# Windows
+Thumbs.db
+desktop.ini
