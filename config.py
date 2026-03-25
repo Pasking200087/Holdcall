@@ -5,7 +5,7 @@ import os
 import sys
 
 APP_NAME = "База контактов"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.2"
 
 # Путь к папке с данными (рядом с exe или рядом со скриптом)
 if getattr(sys, "frozen", False):
