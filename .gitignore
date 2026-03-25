@@ -23,3 +23,7 @@ venv/
 # Windows
 Thumbs.db
 desktop.ini
+
+# Секреты (токены — не в репо)
+secrets.py
+update/

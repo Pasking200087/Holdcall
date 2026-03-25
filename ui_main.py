@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QAbstractItemView, QMessageBox, QStatusBar,
     QAction, QMenuBar, QMenu, QFrame, QSizePolicy, QCheckBox
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
 
 from config import (
@@ -36,6 +36,19 @@ HEADERS = ["ID", "Тип", "Имя", "Телефон", "Компания", "До
 COL_WIDTHS = [50, 80, 180, 140, 160, 120, 100, 220, 130, 130]
 
 
+class UpdateChecker(QThread):
+    update_found = pyqtSignal(str)  # new_version
+
+    def run(self):
+        try:
+            import updater
+            new_ver = updater.check_update()
+            if new_ver:
+                self.update_found.emit(new_ver)
+        except Exception:
+            pass
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -56,6 +69,7 @@ class MainWindow(QMainWindow):
         self._update_timer = QTimer(self)
         self._update_timer.timeout.connect(self._check_update_bg)
         self._update_timer.start(10 * 60 * 1000)
+        self._update_checker = None
         self._check_update_bg()
 
     # ─── МЕНЮ ────────────────────────────────────────────────────────────────
@@ -458,17 +472,19 @@ class MainWindow(QMainWindow):
     # ─── ОБНОВЛЕНИЕ ──────────────────────────────────────────────────────────
 
     def _check_update_bg(self):
-        try:
-            import updater
-            new_ver = updater.check_update()
-            if new_ver:
-                self._update_bar_label.setText(
-                    f"Доступна новая версия {new_ver}. "
-                    "После обновления программа перезапустится автоматически."
-                )
-                self._update_bar.show()
-        except Exception:
-            pass
+        # Не запускать второй поток если предыдущий ещё работает
+        if self._update_checker and self._update_checker.isRunning():
+            return
+        self._update_checker = UpdateChecker(self)
+        self._update_checker.update_found.connect(self._on_update_found)
+        self._update_checker.start()
+
+    def _on_update_found(self, new_ver: str):
+        self._update_bar_label.setText(
+            f"Доступна новая версия {new_ver}. "
+            "После обновления программа перезапустится автоматически."
+        )
+        self._update_bar.show()
 
     def _on_apply_update(self):
         import updater

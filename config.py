@@ -5,7 +5,9 @@ import os
 import sys
 
 APP_NAME = "База контактов"
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
+
+GITHUB_REPO = "Pasking200087/Holdcall"  # owner/repo
 
 # Путь к папке с данными (рядом с exe или рядом со скриптом)
 if getattr(sys, "frozen", False):
