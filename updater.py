@@ -20,6 +20,7 @@ except ImportError:
 
 _API_BASE = "https://api.github.com"
 _ASSET_NAME = "baza.exe"
+_cached_release: Optional[dict] = None
 
 
 def _headers() -> dict:
@@ -51,9 +52,11 @@ def check_update() -> Optional[str]:
     Проверить наличие обновления через GitHub Releases.
     Возвращает строку новой версии или None если обновления нет.
     """
+    global _cached_release
     release = _get_latest_release()
     if not release:
         return None
+    _cached_release = release
     tag = release.get("tag_name", "")
     new_ver = tag.lstrip("v")
     if _parse_version(new_ver) > _parse_version(APP_VERSION):
@@ -84,7 +87,7 @@ def apply_update() -> None:
     if not getattr(sys, "frozen", False):
         return
 
-    release = _get_latest_release()
+    release = _cached_release or _get_latest_release()
     if not release:
         raise RuntimeError("Не удалось получить данные о релизе")
 
