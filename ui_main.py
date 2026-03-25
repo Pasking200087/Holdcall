@@ -167,17 +167,25 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(10, 8, 10, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        # Верхняя панель
-        top = QHBoxLayout()
+        # ── Панель инструментов ───────────────────────────────────────────
+        toolbar = QFrame()
+        toolbar.setStyleSheet(
+            "QFrame { background-color: #FFFFFF;"
+            " border-bottom: 1px solid #DDE1E7; }"
+        )
+        toolbar.setFixedHeight(56)
+        top = QHBoxLayout(toolbar)
+        top.setContentsMargins(12, 8, 12, 8)
         top.setSpacing(8)
 
         # Поиск
         self.edit_search = QLineEdit()
-        self.edit_search.setPlaceholderText("Поиск по имени, телефону, компании...")
-        self.edit_search.setMinimumWidth(260)
+        self.edit_search.setPlaceholderText("🔍  Поиск по имени, телефону, компании...")
+        self.edit_search.setMinimumWidth(280)
+        self.edit_search.setFixedHeight(36)
         self.edit_search.textChanged.connect(self._refresh)
         top.addWidget(self.edit_search)
 
@@ -187,6 +195,7 @@ class MainWindow(QMainWindow):
         for k, v in STATUS_LABELS.items():
             self.combo_status.addItem(v, k)
         self.combo_status.setMinimumWidth(150)
+        self.combo_status.setFixedHeight(36)
         self.combo_status.currentIndexChanged.connect(self._refresh)
         top.addWidget(self.combo_status)
 
@@ -196,6 +205,7 @@ class MainWindow(QMainWindow):
         for k, v in CONTACT_TYPE_LABELS.items():
             self.combo_type.addItem(v, k)
         self.combo_type.setMinimumWidth(120)
+        self.combo_type.setFixedHeight(36)
         self.combo_type.currentIndexChanged.connect(self._refresh)
         top.addWidget(self.combo_type)
 
@@ -204,59 +214,75 @@ class MainWindow(QMainWindow):
         # Кнопки (зависят от роли)
         if auth.Session.is_admin_or_above():
             btn_smart = QPushButton("Умный импорт")
+            btn_smart.setFixedHeight(36)
             btn_smart.clicked.connect(self._on_smart_import)
             top.addWidget(btn_smart)
 
         if auth.Session.can_add_contact():
-            btn_add = QPushButton("+ Добавить")
+            btn_add = QPushButton("＋  Добавить")
             btn_add.setObjectName("success")
+            btn_add.setFixedHeight(36)
             btn_add.clicked.connect(self._on_add)
             top.addWidget(btn_add)
 
         if auth.Session.is_admin_or_above():
             self.btn_delete = QPushButton("Удалить")
             self.btn_delete.setObjectName("danger")
+            self.btn_delete.setFixedHeight(36)
             self.btn_delete.clicked.connect(self._on_delete)
             self.btn_delete.setEnabled(False)
             top.addWidget(self.btn_delete)
 
-            btn_import = QPushButton("Импорт Excel")
+            btn_import = QPushButton("Импорт")
+            btn_import.setFixedHeight(36)
             btn_import.clicked.connect(self._on_import)
             top.addWidget(btn_import)
 
-            btn_export = QPushButton("Экспорт Excel")
+            btn_export = QPushButton("Экспорт")
+            btn_export.setFixedHeight(36)
             btn_export.clicked.connect(self._on_export)
             top.addWidget(btn_export)
 
         # Кнопка "Отметить звонок" — для всех
-        self.btn_call = QPushButton("Отметить звонок")
+        self.btn_call = QPushButton("✓  Отметить звонок")
         self.btn_call.setObjectName("success")
+        self.btn_call.setFixedHeight(36)
         self.btn_call.clicked.connect(self._on_mark_call)
         self.btn_call.setEnabled(False)
         top.addWidget(self.btn_call)
 
-        root.addLayout(top)
+        root.addWidget(toolbar)
 
         # Баннер обновления (скрыт по умолчанию)
         self._update_bar = QFrame()
         self._update_bar.setStyleSheet(
-            "QFrame { background: #FFF3CD; border: 1px solid #FFEAA7; border-radius: 4px; }"
+            "QFrame { background: #FEF9E7; border-bottom: 2px solid #F9CA24;"
+            " border-top: none; border-left: none; border-right: none; }"
         )
         ub_layout = QHBoxLayout(self._update_bar)
-        ub_layout.setContentsMargins(12, 6, 12, 6)
+        ub_layout.setContentsMargins(16, 6, 12, 6)
         self._update_bar_label = QLabel()
-        self._update_bar_label.setStyleSheet("font-weight: bold; color: #856404;")
+        self._update_bar_label.setStyleSheet("font-weight: bold; color: #7D6608; font-size: 13px;")
         ub_layout.addWidget(self._update_bar_label)
         ub_layout.addStretch()
         btn_do_update = QPushButton("Обновить сейчас")
+        btn_do_update.setFixedHeight(30)
         btn_do_update.setObjectName("success")
         btn_do_update.clicked.connect(self._on_apply_update)
         ub_layout.addWidget(btn_do_update)
         btn_later = QPushButton("Позже")
+        btn_later.setFixedHeight(30)
         btn_later.clicked.connect(self._update_bar.hide)
         ub_layout.addWidget(btn_later)
         self._update_bar.hide()
         root.addWidget(self._update_bar)
+
+        # ── Контент (отступы вокруг таблицы) ─────────────────────────────
+        content = QWidget()
+        content.setStyleSheet("background-color: #F0F2F5;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(10, 8, 10, 4)
+        cl.setSpacing(0)
 
         # Таблица
         self.table = QTableWidget()
@@ -265,12 +291,14 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setAlternatingRowColors(False)
+        self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.setShowGrid(True)
+        self.table.setShowGrid(False)
         self.table.setSortingEnabled(True)
-
         self.table.setWordWrap(True)
+        self.table.setStyleSheet(
+            "QTableWidget { border-radius: 8px; border: 1px solid #DDE1E7; }"
+        )
 
         hh = self.table.horizontalHeader()
         for i, w in enumerate(COL_WIDTHS):
@@ -281,7 +309,8 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._on_row_double_click)
 
-        root.addWidget(self.table)
+        cl.addWidget(self.table)
+        root.addWidget(content)
 
         # Строка статуса
         self.status_bar = QStatusBar()
@@ -292,7 +321,7 @@ class MainWindow(QMainWindow):
         lbl_user = QLabel(
             f"  {auth.Session.full_name}  |  {auth.Session.display_role()}  "
         )
-        lbl_user.setStyleSheet("color: #555; font-size: 12px;")
+        lbl_user.setStyleSheet("color: #718096; font-size: 12px;")
         self.status_bar.addPermanentWidget(lbl_user)
 
     # ─── ДАННЫЕ ──────────────────────────────────────────────────────────────
@@ -321,7 +350,7 @@ class MainWindow(QMainWindow):
                 return item
 
             phone_val = c["phone"] or ""
-            row_h = 48 if "\n" in phone_val else 28
+            row_h = 52 if "\n" in phone_val else 32
 
             ctype = c.get("contact_type", CONTACT_PERSON)
             type_label = CONTACT_TYPE_LABELS.get(ctype, ctype)
