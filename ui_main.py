@@ -161,6 +161,12 @@ class MainWindow(QMainWindow):
         act_chpw.triggered.connect(self._on_change_password)
         m_acc.addAction(act_chpw)
 
+        # Справка
+        m_help = mb.addMenu("Справка")
+        act_about = QAction("О программе...", self)
+        act_about.triggered.connect(self._on_about)
+        m_help.addAction(act_about)
+
     # ─── ИНТЕРФЕЙС ───────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -528,6 +534,10 @@ class MainWindow(QMainWindow):
         from ui_dialogs import ChangePasswordDialog
         dlg = ChangePasswordDialog(self)
         dlg.exec_()
+
+    def _on_about(self):
+        from ui_about import AboutDialog
+        AboutDialog(self).exec_()
 
     def _on_logout(self):
         db.log_action(auth.Session.user_id, "LOGOUT", "Выход из системы")
