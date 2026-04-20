@@ -37,8 +37,31 @@ HEADERS = ["ID", "Тип", "Имя", "Телефон", "Компания", "До
 COL_WIDTHS = [50, 80, 180, 140, 160, 120, 100, 220, 130, 130]
 
 
+class DataLoader(QThread):
+    """Загружает контакты из БД в фоне, не блокируя UI."""
+    loaded = pyqtSignal(list)
+
+    def __init__(self, search: str, status_filter: str, type_filter: str, parent=None):
+        super().__init__(parent)
+        self._search = search
+        self._status = status_filter
+        self._type = type_filter
+
+    def run(self):
+        try:
+            import database as db
+            contacts = db.get_contacts(
+                search=self._search,
+                status_filter=self._status,
+                type_filter=self._type,
+            )
+            self.loaded.emit(contacts)
+        except Exception:
+            self.loaded.emit([])
+
+
 class UpdateChecker(QThread):
-    update_found = pyqtSignal(str)  # new_version
+    update_found = pyqtSignal(str)
 
     def run(self):
         try:
@@ -58,6 +81,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 720)
         self._contacts: list[dict] = []
         self._force_quit = False
+        self._loader = None
 
         from ui_splash import make_app_icon
         self._icon = make_app_icon(64)
@@ -69,10 +93,15 @@ class MainWindow(QMainWindow):
         self._build_tray()
         self._refresh()
 
-        # Авто-обновление таблицы каждые 30 секунд
+        # Авто-обновление таблицы каждые 60 секунд
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
-        self._timer.start(30_000)
+        self._timer.start(60_000)
+
+        # Дебаунс поиска: запрос идёт через 350мс после последней буквы
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._refresh)
 
         # Проверка обновлений: сразу при открытии и затем каждые 10 минут
         self._update_timer = QTimer(self)
@@ -192,7 +221,9 @@ class MainWindow(QMainWindow):
         self.edit_search.setPlaceholderText("🔍  Поиск по имени, телефону, компании...")
         self.edit_search.setMinimumWidth(280)
         self.edit_search.setFixedHeight(36)
-        self.edit_search.textChanged.connect(self._refresh)
+        self.edit_search.textChanged.connect(
+            lambda: self._search_timer.start(350)
+        )
         top.addWidget(self.edit_search)
 
         # Фильтр по статусу
@@ -333,11 +364,17 @@ class MainWindow(QMainWindow):
     # ─── ДАННЫЕ ──────────────────────────────────────────────────────────────
 
     def _refresh(self):
+        self._search_timer.stop()
         search = self.edit_search.text().strip()
         status_filter = self.combo_status.currentData()
         type_filter = self.combo_type.currentData()
-        self._contacts = db.get_contacts(search=search, status_filter=status_filter,
-                                         type_filter=type_filter)
+
+        self._loader = DataLoader(search, status_filter, type_filter, self)
+        self._loader.loaded.connect(self._on_data_loaded)
+        self._loader.start()
+
+    def _on_data_loaded(self, contacts: list):
+        self._contacts = contacts
         self._populate_table()
         self._update_status_bar()
 
