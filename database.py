@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from typing import Optional
 
-from config import DB_PATH, ROLE_OWNER, STATUS_NEW, CONTACT_PERSON
+from config import DB_PATH, ROLE_OWNER, ROLE_ADMIN, STATUS_NEW, STATUS_IRRELEVANT, CONTACT_PERSON
 import crypto
 
 
@@ -213,13 +213,16 @@ def _decrypt_row(row: sqlite3.Row) -> dict:
 
 
 def get_contacts(search: str = "", status_filter: str = "",
-                 type_filter: str = "") -> list[dict]:
+                 type_filter: str = "", hide_irrelevant: bool = False) -> list[dict]:
     # Фильтры по незашифрованным полям — отдаём в SQL, не расшифровываем лишнее
     where = "WHERE c.is_deleted=0"
     params: list = []
     if status_filter:
         where += " AND c.status=?"
         params.append(status_filter)
+    elif hide_irrelevant:
+        where += " AND c.status!=?"
+        params.append(STATUS_IRRELEVANT)
     if type_filter:
         where += " AND c.contact_type=?"
         params.append(type_filter)

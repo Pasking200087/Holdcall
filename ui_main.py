@@ -14,7 +14,7 @@ from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
 
 from config import (
     APP_NAME, STATUS_LABELS, STATUS_COLORS,
-    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE,
+    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE, STATUS_IRRELEVANT,
     CONTACT_TYPE_LABELS, CONTACT_PERSON, CONTACT_COMPANY,
 )
 import auth
@@ -41,11 +41,13 @@ class DataLoader(QThread):
     """Загружает контакты из БД в фоне, не блокируя UI."""
     loaded = pyqtSignal(list)
 
-    def __init__(self, search: str, status_filter: str, type_filter: str, parent=None):
+    def __init__(self, search: str, status_filter: str, type_filter: str,
+                 hide_irrelevant: bool = False, parent=None):
         super().__init__(parent)
         self._search = search
         self._status = status_filter
         self._type = type_filter
+        self._hide_irrelevant = hide_irrelevant
 
     def run(self):
         try:
@@ -54,6 +56,7 @@ class DataLoader(QThread):
                 search=self._search,
                 status_filter=self._status,
                 type_filter=self._type,
+                hide_irrelevant=self._hide_irrelevant,
             )
             self.loaded.emit(contacts)
         except Exception:
@@ -230,6 +233,8 @@ class MainWindow(QMainWindow):
         self.combo_status = QComboBox()
         self.combo_status.addItem("Все статусы", "")
         for k, v in STATUS_LABELS.items():
+            if k == STATUS_IRRELEVANT and not auth.Session.is_admin_or_above():
+                continue
             self.combo_status.addItem(v, k)
         self.combo_status.setMinimumWidth(150)
         self.combo_status.setFixedHeight(36)
@@ -368,8 +373,9 @@ class MainWindow(QMainWindow):
         search = self.edit_search.text().strip()
         status_filter = self.combo_status.currentData()
         type_filter = self.combo_type.currentData()
+        hide_irrelevant = not auth.Session.is_admin_or_above()
 
-        self._loader = DataLoader(search, status_filter, type_filter, self)
+        self._loader = DataLoader(search, status_filter, type_filter, hide_irrelevant, self)
         self._loader.loaded.connect(self._on_data_loaded)
         self._loader.start()
 

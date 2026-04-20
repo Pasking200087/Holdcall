@@ -54,23 +54,26 @@ CONTACT_TYPE_LABELS = {
 }
 
 # Статусы контакта
-STATUS_NEW = "new"
-STATUS_CALLED = "called"
-STATUS_CALLBACK = "callback"
-STATUS_DONE = "done"
+STATUS_NEW        = "new"
+STATUS_CALLED     = "called"
+STATUS_CALLBACK   = "callback"
+STATUS_DONE       = "done"
+STATUS_IRRELEVANT = "irrelevant"
 
 STATUS_LABELS = {
-    STATUS_NEW: "Новый",
-    STATUS_CALLED: "Обзвонен",
-    STATUS_CALLBACK: "Перезвонить",
-    STATUS_DONE: "Завершён",
+    STATUS_NEW:        "Новый",
+    STATUS_CALLED:     "Обзвонен",
+    STATUS_CALLBACK:   "Перезвонить",
+    STATUS_DONE:       "Завершён",
+    STATUS_IRRELEVANT: "Не актуален",
 }
 
 STATUS_COLORS = {
-    STATUS_NEW: "#FFFFFF",
-    STATUS_CALLED: "#D4EDDA",
-    STATUS_CALLBACK: "#FFF3CD",
-    STATUS_DONE: "#D1ECF1",
+    STATUS_NEW:        "#FFFFFF",
+    STATUS_CALLED:     "#D4EDDA",
+    STATUS_CALLBACK:   "#FFF3CD",
+    STATUS_DONE:       "#D1ECF1",
+    STATUS_IRRELEVANT: "#E8E8E8",
 }
 
 # Стили Qt
