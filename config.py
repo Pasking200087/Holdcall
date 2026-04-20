@@ -5,7 +5,7 @@ import os
 import sys
 
 APP_NAME = "База контактов"
-APP_VERSION = "1.8"
+APP_VERSION = "1.9"
 
 GITHUB_REPO = "Pasking200087/Holdcall"  # owner/repo
 
