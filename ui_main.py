@@ -91,20 +91,19 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(self._icon)
         QApplication.instance().setWindowIcon(self._icon)
 
-        self._build_menu()
-        self._build_ui()
-        self._build_tray()
-        self._refresh()
+        # Таймеры нужно создать до _build_ui и _refresh, которые их используют
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._refresh)
 
-        # Авто-обновление таблицы каждые 60 секунд
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh)
         self._timer.start(60_000)
 
-        # Дебаунс поиска: запрос идёт через 350мс после последней буквы
-        self._search_timer = QTimer(self)
-        self._search_timer.setSingleShot(True)
-        self._search_timer.timeout.connect(self._refresh)
+        self._build_menu()
+        self._build_ui()
+        self._build_tray()
+        self._refresh()
 
         # Проверка обновлений: сразу при открытии и затем каждые 10 минут
         self._update_timer = QTimer(self)
