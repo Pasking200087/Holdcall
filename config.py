@@ -16,20 +16,41 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = BASE_DIR  # БД и ключ хранятся рядом с exe (на NAS)
-DB_PATH = os.path.join(DATA_DIR, "baza.db")
-KEY_PATH = os.path.join(DATA_DIR, "baza.key")
-
-# Папка обновлений (рядом с exe на NAS)
-UPDATE_DIR = os.path.join(DATA_DIR, "update")
-UPDATE_EXE_PATH = os.path.join(UPDATE_DIR, "baza.exe")
+# Папка обновлений (рядом с exe на NAS) — используется только для legacy пути
+UPDATE_DIR          = os.path.join(BASE_DIR, "update")
+UPDATE_EXE_PATH     = os.path.join(UPDATE_DIR, "baza.exe")
 UPDATE_VERSION_PATH = os.path.join(UPDATE_DIR, "version.txt")
 
 # Локальный файл сессии (на машине пользователя, не на NAS)
 _local_app_dir = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "baza"
 )
-SESSION_PATH = os.path.join(_local_app_dir, "session.json")
+SESSION_PATH   = os.path.join(_local_app_dir, "session.json")
+# Если обновление не смогло перезаписать exe на сетевом диске — запускается
+# локальная копия, а путь к данным передаётся через этот файл-указатель
+DATA_PTR_PATH  = os.path.join(_local_app_dir, "datapath.txt")
+
+# Поддержка запуска из локальной копии (после неудачной перезаписи сети)
+def _resolve_data_dir() -> str:
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    # Если рядом с exe нет baza.db, ищем путь в файле-указателе
+    if not os.path.isfile(os.path.join(base, "baza.db")):
+        try:
+            with open(DATA_PTR_PATH, encoding="utf-8") as _f:
+                _ptr = _f.read().strip()
+            if os.path.isdir(_ptr):
+                return _ptr
+        except Exception:
+            pass
+    return base
+
+# Переопределяем пути с учётом возможного запуска из локальной копии
+DATA_DIR = _resolve_data_dir()
+DB_PATH  = os.path.join(DATA_DIR, "baza.db")
+KEY_PATH = os.path.join(DATA_DIR, "baza.key")
 
 # Роли
 ROLE_OWNER = "owner"
