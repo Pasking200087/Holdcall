@@ -95,8 +95,9 @@ def _download_asset(release: dict, dest_path: str) -> None:
 
 def apply_update() -> None:
     """
-    Скачать новый exe с GitHub и применить обновление через PowerShell:
-    убить процесс → удалить старый exe → переименовать новый → запустить.
+    Скачать новый exe с GitHub во временную локальную папку,
+    затем через PowerShell скопировать на сетевой путь и перезапустить.
+    Загрузка идёт на локальный диск — обходит блокировки сетевого диска.
     """
     if not getattr(sys, "frozen", False):
         return
@@ -106,26 +107,23 @@ def apply_update() -> None:
         raise RuntimeError("Не удалось получить данные о релизе")
 
     exe_path = sys.executable
-    exe_dir  = os.path.dirname(exe_path)
-    new_tmp  = os.path.join(exe_dir, "_baza_new.exe")
+    # Скачиваем во временную папку на локальном диске, а не на сетевой
+    local_tmp = os.path.join(tempfile.gettempdir(), "_baza_new.exe")
 
-    _download_asset(release, new_tmp)
+    _download_asset(release, local_tmp)
 
     current_pid = os.getpid()
 
     ps = "\n".join([
-        # Ждём 2 секунды на случай если процесс ещё не успел завершиться
         "Start-Sleep -Seconds 2",
-        # Убиваем старый процесс по PID (на случай если sys.exit не отработал)
         f"Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue",
         "Start-Sleep -Seconds 1",
-        # Удаляем старый exe (файл уже не занят процессом)
-        f'Remove-Item "{exe_path}" -Force -ErrorAction SilentlyContinue',
-        # Переименовываем скачанный файл в baza.exe
-        f'Rename-Item "{new_tmp}" "{os.path.basename(exe_path)}"',
-        # Запускаем новую версию
+        # Копируем с локального диска на сетевой путь (перезаписываем)
+        f'Copy-Item -Path "{local_tmp}" -Destination "{exe_path}" -Force',
+        # Удаляем локальный временный файл
+        f'Remove-Item "{local_tmp}" -Force -ErrorAction SilentlyContinue',
+        # Запускаем обновлённую версию
         f'Start-Process "{exe_path}"',
-        # Удаляем сам скрипт
         'Remove-Item $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue',
     ])
     ps_path = os.path.join(tempfile.gettempdir(), "baza_update.ps1")
