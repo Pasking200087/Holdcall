@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from typing import Optional
 
-from config import DB_PATH, ROLE_OWNER, ROLE_ADMIN, STATUS_NEW, STATUS_IRRELEVANT, CONTACT_PERSON
+from config import DB_PATH, ROLE_OWNER, ROLE_ADMIN, STATUS_NEW, STATUS_HIDDEN_FROM_MANAGERS, CONTACT_PERSON
 import crypto
 
 
@@ -221,8 +221,9 @@ def get_contacts(search: str = "", status_filter: str = "",
         where += " AND c.status=?"
         params.append(status_filter)
     elif hide_irrelevant:
-        where += " AND c.status!=?"
-        params.append(STATUS_IRRELEVANT)
+        placeholders = ",".join("?" * len(STATUS_HIDDEN_FROM_MANAGERS))
+        where += f" AND c.status NOT IN ({placeholders})"
+        params.extend(STATUS_HIDDEN_FROM_MANAGERS)
     if type_filter:
         where += " AND c.contact_type=?"
         params.append(type_filter)

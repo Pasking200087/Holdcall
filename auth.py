@@ -91,7 +91,7 @@ class Session:
 
     @classmethod
     def can_add_contact(cls) -> bool:
-        return cls.role in (ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER)
+        return cls.role in (ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SPECIALIST)
 
     @classmethod
     def display_role(cls) -> str:

@@ -5,7 +5,7 @@ import os
 import sys
 
 APP_NAME = "База контактов"
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2"
 
 GITHUB_REPO = "Pasking200087/Holdcall"  # owner/repo
 
@@ -80,6 +80,8 @@ STATUS_CALLED     = "called"
 STATUS_CALLBACK   = "callback"
 STATUS_DONE       = "done"
 STATUS_IRRELEVANT = "irrelevant"
+STATUS_NO_ANSWER  = "no_answer"
+STATUS_RUDE       = "rude"
 
 STATUS_LABELS = {
     STATUS_NEW:        "Новый",
@@ -87,15 +89,23 @@ STATUS_LABELS = {
     STATUS_CALLBACK:   "Перезвонить",
     STATUS_DONE:       "Завершён",
     STATUS_IRRELEVANT: "Не актуален",
+    STATUS_NO_ANSWER:  "Не отвечает",
+    STATUS_RUDE:       "Грубый",
 }
 
+# Зелёный — успех, жёлтый — в работе, красный — негатив/отказ
 STATUS_COLORS = {
     STATUS_NEW:        "#FFFFFF",
-    STATUS_CALLED:     "#D4EDDA",
+    STATUS_CALLED:     "#FFF3CD",
     STATUS_CALLBACK:   "#FFF3CD",
-    STATUS_DONE:       "#D1ECF1",
-    STATUS_IRRELEVANT: "#E8E8E8",
+    STATUS_DONE:       "#D4EDDA",
+    STATUS_IRRELEVANT: "#F8D7DA",
+    STATUS_NO_ANSWER:  "#F8D7DA",
+    STATUS_RUDE:       "#F8D7DA",
 }
+
+# Статусы скрытые от менеджеров и специалистов
+STATUS_HIDDEN_FROM_MANAGERS = {STATUS_IRRELEVANT, STATUS_NO_ANSWER, STATUS_RUDE}
 
 # Стили Qt
 STYLE_SHEET = """

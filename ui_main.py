@@ -14,7 +14,8 @@ from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
 
 from config import (
     APP_NAME, STATUS_LABELS, STATUS_COLORS,
-    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE, STATUS_IRRELEVANT,
+    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE,
+    STATUS_IRRELEVANT, STATUS_HIDDEN_FROM_MANAGERS,
     CONTACT_TYPE_LABELS, CONTACT_PERSON, CONTACT_COMPANY,
 )
 import auth
@@ -232,7 +233,7 @@ class MainWindow(QMainWindow):
         self.combo_status = QComboBox()
         self.combo_status.addItem("Все статусы", "")
         for k, v in STATUS_LABELS.items():
-            if k == STATUS_IRRELEVANT and not auth.Session.is_admin_or_above():
+            if k in STATUS_HIDDEN_FROM_MANAGERS and not auth.Session.is_admin_or_above():
                 continue
             self.combo_status.addItem(v, k)
         self.combo_status.setMinimumWidth(150)
