@@ -24,10 +24,8 @@ _cached_release: Optional[dict] = None
 
 
 def _headers() -> dict:
-    h = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-    if GITHUB_TOKEN:
-        h["Authorization"] = f"Bearer {GITHUB_TOKEN}"
-    return h
+    # Репозиторий публичный — токен не нужен для чтения релизов
+    return {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 
 
 def _parse_version(v: str) -> tuple:
@@ -75,20 +73,15 @@ class _StripAuthOnRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _download_asset(release: dict, dest_path: str) -> None:
-    """Скачать baza.exe из assets релиза (работает с приватным репозиторием)."""
+    """Скачать baza.exe напрямую по browser_download_url (публичное репо, без токена)."""
     assets = release.get("assets", [])
     asset = next((a for a in assets if a["name"] == _ASSET_NAME), None)
     if not asset:
         raise RuntimeError(f"Файл {_ASSET_NAME} не найден в релизе")
 
-    # Запрашиваем через API URL с токеном; на редиректе в CDN токен снимается
-    api_url = asset["url"]
-    req = urllib.request.Request(api_url, headers={
-        **_headers(),
-        "Accept": "application/octet-stream",
-    })
-    opener = urllib.request.build_opener(_StripAuthOnRedirect)
-    with opener.open(req, timeout=60) as resp:
+    url = asset["browser_download_url"]
+    req = urllib.request.Request(url, headers={"User-Agent": "baza-updater"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
         with open(dest_path, "wb") as f:
             shutil.copyfileobj(resp, f)
 
