@@ -66,6 +66,12 @@ class DataLoader(QThread):
 
 class UpdateChecker(QThread):
     update_found = pyqtSignal(str)
+    no_update    = pyqtSignal()
+    check_error  = pyqtSignal(str)
+
+    def __init__(self, parent=None, silent: bool = True):
+        super().__init__(parent)
+        self._silent = silent
 
     def run(self):
         try:
@@ -73,8 +79,11 @@ class UpdateChecker(QThread):
             new_ver = updater.check_update()
             if new_ver:
                 self.update_found.emit(new_ver)
-        except Exception:
-            pass
+            elif not self._silent:
+                self.no_update.emit()
+        except Exception as e:
+            if not self._silent:
+                self.check_error.emit(str(e))
 
 
 class MainWindow(QMainWindow):
@@ -204,6 +213,10 @@ class MainWindow(QMainWindow):
 
         # Справка
         m_help = mb.addMenu("Справка")
+        act_check_upd = QAction("Проверить обновление", self)
+        act_check_upd.triggered.connect(self._on_check_update_manual)
+        m_help.addAction(act_check_upd)
+        m_help.addSeparator()
         act_about = QAction("О программе...", self)
         act_about.triggered.connect(self._on_about)
         m_help.addAction(act_about)
@@ -674,11 +687,24 @@ class MainWindow(QMainWindow):
     # ─── ОБНОВЛЕНИЕ ──────────────────────────────────────────────────────────
 
     def _check_update_bg(self):
-        # Не запускать второй поток если предыдущий ещё работает
         if self._update_checker and self._update_checker.isRunning():
             return
-        self._update_checker = UpdateChecker(self)
+        self._update_checker = UpdateChecker(self, silent=True)
         self._update_checker.update_found.connect(self._on_update_found)
+        self._update_checker.start()
+
+    def _on_check_update_manual(self):
+        if self._update_checker and self._update_checker.isRunning():
+            QMessageBox.information(self, "Обновление", "Проверка уже выполняется...")
+            return
+        self._update_checker = UpdateChecker(self, silent=False)
+        self._update_checker.update_found.connect(self._on_update_found)
+        self._update_checker.no_update.connect(
+            lambda: QMessageBox.information(self, "Обновление", "У вас последняя версия.")
+        )
+        self._update_checker.check_error.connect(
+            lambda e: QMessageBox.warning(self, "Ошибка", f"Не удалось проверить обновление:\n{e}")
+        )
         self._update_checker.start()
 
     def _on_update_found(self, new_ver: str):
