@@ -165,6 +165,10 @@ class MainWindow(QMainWindow):
             act_export = QAction("Экспорт в Excel...", self)
             act_export.triggered.connect(self._on_export)
             m_file.addAction(act_export)
+
+            act_bitrix = QAction("Экспорт завершённых в Битрикс24...", self)
+            act_bitrix.triggered.connect(self._on_export_bitrix)
+            m_file.addAction(act_bitrix)
             m_file.addSeparator()
 
         act_logout = QAction("Выйти из аккаунта", self)
@@ -284,6 +288,12 @@ class MainWindow(QMainWindow):
             btn_export.setFixedHeight(36)
             btn_export.clicked.connect(self._on_export)
             top.addWidget(btn_export)
+
+            btn_bitrix = QPushButton("⭳ В Битрикс")
+            btn_bitrix.setFixedHeight(36)
+            btn_bitrix.setToolTip("Экспорт завершённых контактов в формате Битрикс24")
+            btn_bitrix.clicked.connect(self._on_export_bitrix)
+            top.addWidget(btn_bitrix)
 
         # Кнопка "Отметить звонок" — для всех
         self.btn_call = QPushButton("✓  Отметить звонок")
@@ -559,6 +569,34 @@ class MainWindow(QMainWindow):
             export_to_excel(contacts, path)
             db.log_action(auth.Session.user_id, "EXPORT_EXCEL", f"файл={path}")
             QMessageBox.information(self, "Экспорт", f"Сохранено {len(contacts)} записей.")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать:\n{e}")
+
+    def _on_export_bitrix(self):
+        from excel import export_to_bitrix
+        from PyQt5.QtWidgets import QFileDialog
+        from config import STATUS_DONE
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Экспорт для Битрикс24",
+            "битрикс_лиды.xlsx", "Excel файлы (*.xlsx)"
+        )
+        if not path:
+            return
+        try:
+            contacts = db.get_contacts(status_filter=STATUS_DONE)
+            if not contacts:
+                QMessageBox.information(self, "Экспорт в Битрикс24",
+                                        "Нет контактов со статусом «Завершён».")
+                return
+            export_to_bitrix(contacts, path)
+            db.log_action(auth.Session.user_id, "EXPORT_BITRIX",
+                          f"файл={path}, записей={len(contacts)}")
+            QMessageBox.information(
+                self, "Экспорт в Битрикс24",
+                f"Сохранено {len(contacts)} контактов.\n\n"
+                "Как импортировать в Битрикс24:\n"
+                "CRM → Лиды → ещё (•••) → Импорт"
+            )
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать:\n{e}")
 

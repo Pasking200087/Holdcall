@@ -146,3 +146,58 @@ def export_to_excel(contacts: list[dict], path: str) -> None:
     ws.freeze_panes = "A2"
 
     wb.save(path)
+
+
+def export_to_bitrix(contacts: list[dict], path: str) -> None:
+    """
+    Экспорт завершённых контактов в формате для импорта в Битрикс24 CRM.
+    Колонки соответствуют стандартному шаблону импорта лидов Битрикс24.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Лиды для Битрикс24"
+
+    header_fill = PatternFill("solid", fgColor="1F6B3A")
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    center = Alignment(horizontal="center", vertical="center")
+
+    # Колонки в формате импорта лидов Битрикс24
+    headers = [
+        "Имя",
+        "Телефон",
+        "Компания",
+        "Должность",
+        "Комментарий",
+        "Описание",
+        "Источник",
+    ]
+    col_widths = [25, 18, 25, 20, 35, 35, 15]
+
+    for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        ws.column_dimensions[cell.column_letter].width = w
+
+    ws.row_dimensions[1].height = 20
+
+    for row_idx, c in enumerate(contacts, start=2):
+        caller = c.get("caller_name") or c.get("caller_username") or ""
+        description = c.get("call_result", "")
+        if caller:
+            description = f"{description}\nМенеджер: {caller}".strip()
+
+        ws.append([
+            c.get("name", ""),
+            c.get("phone", ""),
+            c.get("company", ""),
+            c.get("position", ""),
+            c.get("comment", ""),
+            description,
+            "Холодный звонок",
+        ])
+        ws.row_dimensions[row_idx].height = 16
+
+    ws.freeze_panes = "A2"
+    wb.save(path)
