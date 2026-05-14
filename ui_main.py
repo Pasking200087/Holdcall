@@ -191,6 +191,11 @@ class MainWindow(QMainWindow):
             act_log.triggered.connect(self._on_audit)
             m_admin.addAction(act_log)
 
+            m_admin.addSeparator()
+            act_dbpath = QAction("Изменить путь к базе...", self)
+            act_dbpath.triggered.connect(self._on_change_db_path)
+            m_admin.addAction(act_dbpath)
+
         # Аккаунт
         m_acc = mb.addMenu("Аккаунт")
         act_chpw = QAction("Сменить пароль...", self)
@@ -634,6 +639,17 @@ class MainWindow(QMainWindow):
         from ui_dialogs import AuditDialog
         dlg = AuditDialog(self)
         dlg.exec_()
+
+    def _on_change_db_path(self):
+        import config
+        from ui_setup import SetupDialog
+        dlg = SetupDialog(current_path=config.DATA_DIR, parent=self)
+        if dlg.exec_() == 1:
+            QMessageBox.information(
+                self, "Путь изменён",
+                f"Новый путь сохранён:\n{config.DATA_DIR}\n\n"
+                "Перезапустите программу, чтобы изменения вступили в силу."
+            )
 
     def _on_change_password(self):
         from ui_dialogs import ChangePasswordDialog

@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QTimer, QEventLoop
 
-from config import STYLE_SHEET, APP_NAME, APP_VERSION, DB_PATH, BASE_DIR
+import config
+from config import STYLE_SHEET, APP_NAME, APP_VERSION, BASE_DIR
 
 
 _app: QApplication = None
@@ -74,6 +75,13 @@ def main():
     _app.setApplicationName(APP_NAME)
     _app.setStyleSheet(STYLE_SHEET)
 
+    # ── Настройка пути к базе (первый запуск) ────────────────────────────
+    if not config.DATA_DIR:
+        from ui_setup import SetupDialog
+        dlg = SetupDialog()
+        if dlg.exec_() != 1:
+            sys.exit(0)
+
     # ── Экран приветствия ─────────────────────────────────────────────────
     from ui_splash import SplashScreen
     splash = SplashScreen(APP_VERSION)
@@ -91,7 +99,7 @@ def main():
         QMessageBox.critical(
             None, "Ошибка базы данных",
             f"Не удалось инициализировать базу данных:\n{e}\n\n"
-            f"Путь: {DB_PATH}"
+            f"Путь: {config.DB_PATH}"
         )
         sys.exit(1)
 

@@ -30,27 +30,32 @@ SESSION_PATH   = os.path.join(_local_app_dir, "session.json")
 # локальная копия, а путь к данным передаётся через этот файл-указатель
 DATA_PTR_PATH  = os.path.join(_local_app_dir, "datapath.txt")
 
-# Поддержка запуска из локальной копии (после неудачной перезаписи сети)
 def _resolve_data_dir() -> str:
-    if getattr(sys, "frozen", False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    # Если рядом с exe нет baza.db, ищем путь в файле-указателе
-    if not os.path.isfile(os.path.join(base, "baza.db")):
-        try:
-            with open(DATA_PTR_PATH, encoding="utf-8") as _f:
-                _ptr = _f.read().strip()
-            if os.path.isdir(_ptr):
-                return _ptr
-        except Exception:
-            pass
-    return base
+    """Читаем путь к сетевой папке из datapath.txt. Пустая строка — не настроено."""
+    try:
+        with open(DATA_PTR_PATH, encoding="utf-8") as _f:
+            _ptr = _f.read().strip()
+        if _ptr and os.path.isdir(_ptr):
+            return _ptr
+    except Exception:
+        pass
+    return ""
 
-# Переопределяем пути с учётом возможного запуска из локальной копии
+
+def set_data_dir(path: str) -> None:
+    """Сохранить путь к папке с базой и обновить модульные константы."""
+    global DATA_DIR, DB_PATH, KEY_PATH
+    os.makedirs(os.path.dirname(DATA_PTR_PATH), exist_ok=True)
+    with open(DATA_PTR_PATH, "w", encoding="utf-8") as _f:
+        _f.write(path)
+    DATA_DIR = path
+    DB_PATH  = os.path.join(path, "baza.db")
+    KEY_PATH = os.path.join(path, "baza.key")
+
+
 DATA_DIR = _resolve_data_dir()
-DB_PATH  = os.path.join(DATA_DIR, "baza.db")
-KEY_PATH = os.path.join(DATA_DIR, "baza.key")
+DB_PATH  = os.path.join(DATA_DIR, "baza.db") if DATA_DIR else ""
+KEY_PATH = os.path.join(DATA_DIR, "baza.key") if DATA_DIR else ""
 
 # Роли
 ROLE_OWNER = "owner"
