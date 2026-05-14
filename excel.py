@@ -8,7 +8,7 @@ excel.py — Импорт и экспорт контактов через Excel 
 import re
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
-from config import STATUS_LABELS
+from config import STATUS_LABELS, STATUS_COLORS
 
 
 # Варианты названий колонок (регистронезависимо)
@@ -127,9 +127,10 @@ def export_to_excel(contacts: list[dict], path: str) -> None:
     ws.row_dimensions[1].height = 20
 
     for row_idx, c in enumerate(contacts, start=2):
-        status_label = STATUS_LABELS.get(c.get("status", ""), c.get("status", ""))
+        status = c.get("status", "")
+        status_label = STATUS_LABELS.get(status, status)
         caller = c.get("caller_name") or c.get("caller_username") or ""
-        ws.append([
+        row_data = [
             row_idx - 1,
             c.get("name", ""),
             c.get("phone", ""),
@@ -139,7 +140,12 @@ def export_to_excel(contacts: list[dict], path: str) -> None:
             caller,
             c.get("call_date", ""),
             c.get("comment", ""),
-        ])
+        ]
+        hex_color = STATUS_COLORS.get(status, "#FFFFFF").lstrip("#")
+        row_fill = PatternFill("solid", fgColor=hex_color)
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
         ws.row_dimensions[row_idx].height = 16
 
     # Закрепить первую строку
