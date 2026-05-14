@@ -10,6 +10,7 @@ a = Analysis(
     datas=[],
     hiddenimports=[
         'updater',
+        'ui_setup',
         'PyQt5.QtCore',
         'PyQt5.QtGui',
         'PyQt5.QtWidgets',
