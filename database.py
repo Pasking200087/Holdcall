@@ -371,6 +371,40 @@ def import_contacts_bulk(rows: list[dict], user_id: int) -> int:
     return count
 
 
+def fix_bitrix_company_fields() -> int:
+    """
+    Исправить контакты, где company содержит метку типа из Битрикса
+    ("Юр. лицо" / "Физ. лицо") вместо реального названия.
+    Меняет местами company ↔ position и очищает position.
+    Возвращает количество исправленных записей.
+    """
+    _TYPE_LABELS = {"юр. лицо", "физ. лицо"}
+    conn = get_connection()
+    fixed = 0
+    try:
+        rows = conn.execute(
+            "SELECT id, name, company, position FROM contacts WHERE is_deleted=0"
+        ).fetchall()
+        for row in rows:
+            company_dec = crypto.decrypt(row["company"])
+            if company_dec.strip().lower() not in _TYPE_LABELS:
+                continue
+            # company содержит метку типа, position — реальное название
+            new_company = row["position"] or ""
+            new_position = ""
+            enc_new_company = crypto.encrypt(new_company) if new_company else ""
+            conn.execute(
+                "UPDATE contacts SET company=?, position=? WHERE id=?",
+                (enc_new_company, new_position, row["id"])
+            )
+            fixed += 1
+        if fixed:
+            conn.commit()
+    finally:
+        conn.close()
+    return fixed
+
+
 def get_contacts_count() -> dict:
     conn = get_connection()
     try:

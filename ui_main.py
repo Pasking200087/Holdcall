@@ -200,6 +200,10 @@ class MainWindow(QMainWindow):
             act_log.triggered.connect(self._on_audit)
             m_admin.addAction(act_log)
 
+            act_fix = QAction("Исправить поля из Битрикса...", self)
+            act_fix.triggered.connect(self._on_fix_bitrix)
+            m_admin.addAction(act_fix)
+
             m_admin.addSeparator()
             act_dbpath = QAction("Изменить путь к базе...", self)
             act_dbpath.triggered.connect(self._on_change_db_path)
@@ -664,6 +668,30 @@ class MainWindow(QMainWindow):
         from ui_dialogs import AuditDialog
         dlg = AuditDialog(self)
         dlg.exec_()
+
+    def _on_fix_bitrix(self):
+        ans = QMessageBox.question(
+            self, "Исправить поля из Битрикса",
+            "Программа найдёт контакты, у которых в поле «Компания» хранится\n"
+            "«Юр. лицо» или «Физ. лицо» вместо реального названия,\n"
+            "и переставит данные на правильные места.\n\n"
+            "Продолжить?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+        )
+        if ans != QMessageBox.Yes:
+            return
+        try:
+            count = db.fix_bitrix_company_fields()
+            db.log_action(auth.Session.user_id, "FIX_BITRIX_FIELDS", f"исправлено={count}")
+            if count:
+                QMessageBox.information(
+                    self, "Готово", f"Исправлено записей: {count}.\nТаблица обновлена."
+                )
+                self._refresh()
+            else:
+                QMessageBox.information(self, "Готово", "Записей для исправления не найдено.")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
 
     def _on_change_db_path(self):
         import config
