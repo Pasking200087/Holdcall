@@ -213,7 +213,8 @@ def _decrypt_row(row: sqlite3.Row) -> dict:
 
 
 def get_contacts(search: str = "", status_filter: str = "",
-                 type_filter: str = "", hide_irrelevant: bool = False) -> list[dict]:
+                 type_filter: str = "", hide_irrelevant: bool = False,
+                 date_from: str = "", date_to: str = "") -> list[dict]:
     # Фильтры по незашифрованным полям — отдаём в SQL, не расшифровываем лишнее
     where = "WHERE c.is_deleted=0"
     params: list = []
@@ -227,6 +228,12 @@ def get_contacts(search: str = "", status_filter: str = "",
     if type_filter:
         where += " AND c.contact_type=?"
         params.append(type_filter)
+    if date_from:
+        where += " AND c.call_date >= ?"
+        params.append(date_from)
+    if date_to:
+        where += " AND c.call_date <= ?"
+        params.append(date_to + " 23:59:59")
 
     conn = get_connection()
     try:

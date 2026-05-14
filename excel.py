@@ -170,8 +170,10 @@ def export_to_bitrix(contacts: list[dict], path: str) -> None:
         "Комментарий",
         "Описание",
         "Источник",
+        "Дата звонка",
+        "Менеджер",
     ]
-    col_widths = [25, 18, 25, 20, 35, 35, 15]
+    col_widths = [25, 18, 25, 20, 35, 35, 15, 16, 20]
 
     for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=h)
@@ -184,18 +186,16 @@ def export_to_bitrix(contacts: list[dict], path: str) -> None:
 
     for row_idx, c in enumerate(contacts, start=2):
         caller = c.get("caller_name") or c.get("caller_username") or ""
-        description = c.get("call_result", "")
-        if caller:
-            description = f"{description}\nМенеджер: {caller}".strip()
-
         ws.append([
             c.get("name", ""),
             c.get("phone", ""),
             c.get("company", ""),
             c.get("position", ""),
             c.get("comment", ""),
-            description,
+            c.get("call_result", ""),
             "Холодный звонок",
+            c.get("call_date", ""),
+            caller,
         ])
         ws.row_dimensions[row_idx].height = 16
 

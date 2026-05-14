@@ -5,7 +5,7 @@ import os
 import sys
 
 APP_NAME = "База контактов"
-APP_VERSION = "2.4"
+APP_VERSION = "2.5"
 
 GITHUB_REPO = "Pasking200087/Holdcall"  # owner/repo
 
@@ -75,19 +75,21 @@ CONTACT_TYPE_LABELS = {
 }
 
 # Статусы контакта
-STATUS_NEW        = "new"
-STATUS_CALLED     = "called"
-STATUS_CALLBACK   = "callback"
-STATUS_DONE       = "done"
-STATUS_IRRELEVANT = "irrelevant"
-STATUS_NO_ANSWER  = "no_answer"
-STATUS_RUDE       = "rude"
+STATUS_NEW         = "new"
+STATUS_CALLED      = "called"
+STATUS_CALLBACK    = "callback"
+STATUS_DONE        = "done"
+STATUS_PRODUCTIVE  = "productive"
+STATUS_IRRELEVANT  = "irrelevant"
+STATUS_NO_ANSWER   = "no_answer"
+STATUS_RUDE        = "rude"
 
 STATUS_LABELS = {
     STATUS_NEW:        "Новый",
     STATUS_CALLED:     "Обзвонен",
     STATUS_CALLBACK:   "Перезвонить",
     STATUS_DONE:       "Завершён",
+    STATUS_PRODUCTIVE: "Результативный",
     STATUS_IRRELEVANT: "Не актуален",
     STATUS_NO_ANSWER:  "Не отвечает",
     STATUS_RUDE:       "Грубый",
@@ -99,6 +101,7 @@ STATUS_COLORS = {
     STATUS_CALLED:     "#FFF3CD",
     STATUS_CALLBACK:   "#FFF3CD",
     STATUS_DONE:       "#D4EDDA",
+    STATUS_PRODUCTIVE: "#A8D5B5",
     STATUS_IRRELEVANT: "#F8D7DA",
     STATUS_NO_ANSWER:  "#F8D7DA",
     STATUS_RUDE:       "#F8D7DA",

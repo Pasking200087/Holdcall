@@ -8,8 +8,9 @@ from PyQt5.QtWidgets import (
     QHeaderView, QAbstractItemView, QMessageBox,
     QGroupBox, QCheckBox, QSizePolicy, QDialogButtonBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QColor, QBrush
+from PyQt5.QtWidgets import QDateEdit
 
 from config import (
     ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SPECIALIST, ROLE_LABELS,
@@ -422,6 +423,68 @@ class AuditDialog(QDialog):
             self.table.setItem(i, 3, cell(r["action"]))
             self.table.setItem(i, 4, cell(r["details"]))
             self.table.setRowHeight(i, 24)
+
+
+# ─── ВЫБОР ДИАПАЗОНА ДАТ (ЭКСПОРТ БИТРИКС) ──────────────────────────────────
+
+class DateRangeDialog(QDialog):
+    """Диалог выбора диапазона дат для экспорта в Битрикс24."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Экспорт в Битрикс24 — период")
+        self.setMinimumWidth(320)
+        self.setModal(True)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        layout.addWidget(QLabel("Выберите период по дате звонка:"))
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        today = QDate.currentDate()
+
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(today.addDays(-30))
+        self.date_from.setDisplayFormat("dd.MM.yyyy")
+        form.addRow("С:", self.date_from)
+
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(today)
+        self.date_to.setDisplayFormat("dd.MM.yyyy")
+        form.addRow("По:", self.date_to)
+
+        layout.addLayout(form)
+
+        btns = QHBoxLayout()
+        btns.addStretch()
+        btn_cancel = QPushButton("Отмена")
+        btn_cancel.clicked.connect(self.reject)
+        btn_ok = QPushButton("Экспорт")
+        btn_ok.setObjectName("success")
+        btn_ok.clicked.connect(self._validate)
+        btns.addWidget(btn_cancel)
+        btns.addWidget(btn_ok)
+        layout.addLayout(btns)
+
+    def _validate(self):
+        if self.date_from.date() > self.date_to.date():
+            QMessageBox.warning(self, "Ошибка", "Дата «С» не может быть позже даты «По»")
+            return
+        self.accept()
+
+    def get_range(self) -> tuple[str, str]:
+        """Возвращает (date_from, date_to) в формате YYYY-MM-DD."""
+        return (
+            self.date_from.date().toString("yyyy-MM-dd"),
+            self.date_to.date().toString("yyyy-MM-dd"),
+        )
 
 
 # ─── СМЕНА ПАРОЛЯ ────────────────────────────────────────────────────────────

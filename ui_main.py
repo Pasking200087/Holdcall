@@ -14,7 +14,7 @@ from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
 
 from config import (
     APP_NAME, STATUS_LABELS, STATUS_COLORS,
-    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE,
+    STATUS_NEW, STATUS_CALLED, STATUS_CALLBACK, STATUS_DONE, STATUS_PRODUCTIVE,
     STATUS_IRRELEVANT, STATUS_HIDDEN_FROM_MANAGERS,
     CONTACT_TYPE_LABELS, CONTACT_PERSON, CONTACT_COMPANY,
 )
@@ -575,27 +575,51 @@ class MainWindow(QMainWindow):
     def _on_export_bitrix(self):
         from excel import export_to_bitrix
         from PyQt5.QtWidgets import QFileDialog
-        from config import STATUS_DONE
+        from ui_dialogs import DateRangeDialog
+        from config import STATUS_DONE, STATUS_PRODUCTIVE
+
+        # Выбор периода
+        dlg = DateRangeDialog(self)
+        if dlg.exec_() != DateRangeDialog.Accepted:
+            return
+        date_from, date_to = dlg.get_range()
+
         path, _ = QFileDialog.getSaveFileName(
             self, "Экспорт для Битрикс24",
-            "битрикс_лиды.xlsx", "Excel файлы (*.xlsx)"
+            f"битрикс_{date_from}_{date_to}.xlsx", "Excel файлы (*.xlsx)"
         )
         if not path:
             return
         try:
-            contacts = db.get_contacts(status_filter=STATUS_DONE)
-            if not contacts:
-                QMessageBox.information(self, "Экспорт в Битрикс24",
-                                        "Нет контактов со статусом «Завершён».")
+            # Берём завершённые и результативные за выбранный период
+            contacts = []
+            for st in (STATUS_DONE, STATUS_PRODUCTIVE):
+                contacts += db.get_contacts(
+                    status_filter=st, date_from=date_from, date_to=date_to
+                )
+            # Убираем дубли (на случай если статусы пересекутся) и сортируем по дате
+            seen = set()
+            unique = []
+            for c in contacts:
+                if c["id"] not in seen:
+                    seen.add(c["id"])
+                    unique.append(c)
+            unique.sort(key=lambda x: x.get("call_date", ""), reverse=True)
+
+            if not unique:
+                QMessageBox.information(
+                    self, "Экспорт в Битрикс24",
+                    f"За период {date_from} – {date_to} нет завершённых\nили результативных контактов."
+                )
                 return
-            export_to_bitrix(contacts, path)
+            export_to_bitrix(unique, path)
             db.log_action(auth.Session.user_id, "EXPORT_BITRIX",
-                          f"файл={path}, записей={len(contacts)}")
+                          f"файл={path}, период={date_from}:{date_to}, записей={len(unique)}")
             QMessageBox.information(
                 self, "Экспорт в Битрикс24",
-                f"Сохранено {len(contacts)} контактов.\n\n"
+                f"Сохранено {len(unique)} контактов за период\n{date_from} – {date_to}.\n\n"
                 "Как импортировать в Битрикс24:\n"
-                "CRM → Лиды → ещё (•••) → Импорт"
+                "CRM → Лиды → ••• → Импорт"
             )
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать:\n{e}")
