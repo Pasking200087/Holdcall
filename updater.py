@@ -113,12 +113,6 @@ def apply_update() -> None:
 
     _download_asset(release, local_tmp)
 
-    # Сохраняем путь к данным (на случай запуска из локального temp)
-    from config import _local_app_dir, DATA_PTR_PATH
-    os.makedirs(_local_app_dir, exist_ok=True)
-    with open(DATA_PTR_PATH, "w", encoding="utf-8") as f:
-        f.write(exe_dir)
-
     current_pid = os.getpid()
 
     # PowerShell-скрипт:
