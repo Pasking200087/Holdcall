@@ -233,7 +233,20 @@ def parse_excel(path: str) -> list[ParsedRow]:
             continue
 
         name    = clean_name(name_raw)
-        company = clean_name(company_raw)
+
+        # Если col_c — метка типа из Битрикса ("Юр. лицо" / "Физ. лицо"),
+        # то реальное название компании находится в col_b (position)
+        _BITRIX_TYPE_LABELS = {
+            "юр. лицо": "company", "физ. лицо": "person",
+            "юридическое лицо": "company", "физическое лицо": "person",
+        }
+        company_raw_str = str(company_raw).strip() if company_raw is not None else ""
+        _forced_ctype = _BITRIX_TYPE_LABELS.get(company_raw_str.lower())
+        if _forced_ctype:
+            company  = clean_name(position)  # реальное название было в col_b
+            position = ""
+        else:
+            company = clean_name(company_raw)
 
         # Попытка нормализовать телефон из колонки D
         # Поддержка нескольких номеров и извлечения имени из телефонной ячейки
@@ -270,7 +283,7 @@ def parse_excel(path: str) -> list[ParsedRow]:
             results.append(ParsedRow(
                 row_num=row_num, name=name, phone="", phone_raw=phone_raw_str,
                 company=company, position=position, call_note=call_note,
-                contact_type=detect_contact_type(company, position),
+                contact_type=_forced_ctype or detect_contact_type(company, position),
                 status=ROW_NO_PHONE
             ))
             continue
@@ -281,14 +294,14 @@ def parse_excel(path: str) -> list[ParsedRow]:
             results.append(ParsedRow(
                 row_num=row_num, name=name, phone=phone, phone_raw=phone_raw_str,
                 company=company, position=position, call_note=call_note,
-                contact_type=detect_contact_type(company, position),
+                contact_type=_forced_ctype or detect_contact_type(company, position),
                 status=ROW_DUPLICATE, dup_of=seen_phones[first_phone]
             ))
             continue
 
         seen_phones[first_phone] = row_num
         status = ROW_EXTRACTED if extracted else ROW_OK
-        ctype = detect_contact_type(company, position)
+        ctype = _forced_ctype or detect_contact_type(company, position)
 
         results.append(ParsedRow(
             row_num=row_num, name=name, phone=phone, phone_raw=phone_raw_str,

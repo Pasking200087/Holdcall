@@ -432,12 +432,24 @@ class MainWindow(QMainWindow):
             ctype = c.get("contact_type", CONTACT_PERSON)
             type_label = CONTACT_TYPE_LABELS.get(ctype, ctype)
 
+            # Если company содержит метку типа ("Юр. лицо") вместо названия —
+            # реальное название компании хранится в position (артефакт импорта из Битрикса)
+            _TYPE_LABELS = {"юр. лицо", "физ. лицо"}
+            company_val  = c.get("company", "") or ""
+            position_val = c.get("position", "") or ""
+            if company_val.strip().lower() in _TYPE_LABELS:
+                display_company = position_val
+                display_pos     = ""
+            else:
+                display_company = company_val
+                display_pos     = position_val
+
             self.table.setItem(row_idx, COL_ID,      cell(c["id"]))
             self.table.setItem(row_idx, COL_TYPE,    cell(type_label))
             self.table.setItem(row_idx, COL_NAME,    cell(c["name"]))
             self.table.setItem(row_idx, COL_PHONE,   cell(phone_val))
-            self.table.setItem(row_idx, COL_COMPANY, cell(c["company"]))
-            self.table.setItem(row_idx, COL_POS,     cell(c.get("position", "")))
+            self.table.setItem(row_idx, COL_COMPANY, cell(display_company))
+            self.table.setItem(row_idx, COL_POS,     cell(display_pos))
             self.table.setItem(row_idx, COL_STATUS,  cell(STATUS_LABELS.get(status, status)))
             self.table.setItem(row_idx, COL_RESULT,  cell(c.get("call_result", "")))
             caller = c.get("caller_name") or c.get("caller_username") or ""
