@@ -7,10 +7,10 @@ from PyQt5.QtWidgets import (
     QPushButton, QLineEdit, QComboBox, QLabel,
     QAbstractItemView, QMessageBox, QStatusBar,
     QAction, QMenuBar, QMenu, QFrame, QSizePolicy, QCheckBox,
-    QSystemTrayIcon, QApplication,
+    QSystemTrayIcon, QApplication, QStyledItemDelegate, QStyleOptionViewItem,
 )
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QIcon, QBrush
+from PyQt5.QtGui import QColor, QFont, QIcon, QBrush, QPen
 
 from config import (
     APP_NAME, STATUS_LABELS, STATUS_COLORS,
@@ -22,6 +22,19 @@ from config import (
 _STATUS_BRUSHES: dict = {}  # заполняется при первом вызове _populate_table
 import auth
 import database as db
+
+
+class _RowDelegate(QStyledItemDelegate):
+    """Рисует нижнюю границу строки и учитывает цвет фона из setBackground()."""
+    _border = QPen(QColor("#E2E8F0"))
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        painter.save()
+        painter.setPen(self._border)
+        painter.drawLine(option.rect.left(), option.rect.bottom(),
+                         option.rect.right(), option.rect.bottom())
+        painter.restore()
 
 
 # Индексы колонок таблицы
@@ -41,8 +54,9 @@ COL_WIDTHS = [50, 80, 180, 140, 160, 120, 100, 220, 130, 130]
 
 
 class DataLoader(QThread):
-    """Загружает контакты из БД в фоне, не блокируя UI."""
+    """Загружает контакты из БД в фоне порциями, не блокируя UI."""
     loaded = pyqtSignal(list)
+    _BATCH = 300
 
     def __init__(self, search: str, status_filter: str, type_filter: str,
                  hide_irrelevant: bool = False, parent=None):
@@ -55,13 +69,27 @@ class DataLoader(QThread):
     def run(self):
         try:
             import database as db
-            contacts = db.get_contacts(
-                search=self._search,
+            rows = db.get_contacts_raw(
                 status_filter=self._status,
                 type_filter=self._type,
                 hide_irrelevant=self._hide_irrelevant,
             )
-            self.loaded.emit(contacts)
+            if self._search:
+                # При поиске расшифровываем всё сразу и фильтруем
+                s = self._search.lower()
+                result = []
+                for r in rows:
+                    d = db.decrypt_contact(r)
+                    if s in d["name"].lower() or s in d["phone"].lower() or s in d["company"].lower():
+                        result.append(d)
+                self.loaded.emit(result)
+            else:
+                # Без поиска — показываем порциями, первые данные появятся быстро
+                all_contacts: list = []
+                for i in range(0, len(rows), self._BATCH):
+                    chunk = [db.decrypt_contact(r) for r in rows[i:i + self._BATCH]]
+                    all_contacts.extend(chunk)
+                    self.loaded.emit(list(all_contacts))
         except Exception:
             self.loaded.emit([])
 
@@ -375,6 +403,8 @@ class MainWindow(QMainWindow):
         self.table.setStyleSheet(
             "QTableWidget { border-radius: 8px; border: 1px solid #DDE1E7; }"
         )
+
+        self.table.setItemDelegate(_RowDelegate(self.table))
 
         hh = self.table.horizontalHeader()
         for i, w in enumerate(COL_WIDTHS):

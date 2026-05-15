@@ -217,10 +217,8 @@ def _decrypt_row(row: sqlite3.Row) -> dict:
     return d
 
 
-def get_contacts(search: str = "", status_filter: str = "",
-                 type_filter: str = "", hide_irrelevant: bool = False,
-                 date_from: str = "", date_to: str = "") -> list[dict]:
-    # Фильтры по незашифрованным полям — отдаём в SQL, не расшифровываем лишнее
+def _contacts_where(status_filter: str, type_filter: str,
+                    hide_irrelevant: bool, date_from: str, date_to: str):
     where = "WHERE c.is_deleted=0"
     params: list = []
     if status_filter:
@@ -239,24 +237,47 @@ def get_contacts(search: str = "", status_filter: str = "",
     if date_to:
         where += " AND c.call_date <= ?"
         params.append(date_to + " 23:59:59")
+    return where, params
 
+
+_CONTACTS_SQL = (
+    "SELECT c.*, u.full_name as caller_name, u.username as caller_username "
+    "FROM contacts c LEFT JOIN users u ON c.called_by = u.id "
+    "{where} ORDER BY c.call_date DESC, c.id DESC"
+)
+
+
+def get_contacts_raw(status_filter: str = "", type_filter: str = "",
+                     hide_irrelevant: bool = False,
+                     date_from: str = "", date_to: str = "") -> list[dict]:
+    """Получить контакты из БД без расшифровки (поля зашифрованы)."""
+    where, params = _contacts_where(status_filter, type_filter, hide_irrelevant, date_from, date_to)
     conn = get_connection()
     try:
-        rows = conn.execute(
-            "SELECT c.*, u.full_name as caller_name, u.username as caller_username "
-            "FROM contacts c "
-            "LEFT JOIN users u ON c.called_by = u.id "
-            f"{where} "
-            "ORDER BY c.call_date DESC, c.id DESC",
-            params
-        ).fetchall()
+        rows = conn.execute(_CONTACTS_SQL.format(where=where), params).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def decrypt_contact(raw: dict) -> dict:
+    """Расшифровать поля одного контакта (результат get_contacts_raw)."""
+    return _decrypt_row(raw)
+
+
+def get_contacts(search: str = "", status_filter: str = "",
+                 type_filter: str = "", hide_irrelevant: bool = False,
+                 date_from: str = "", date_to: str = "") -> list[dict]:
+    where, params = _contacts_where(status_filter, type_filter, hide_irrelevant, date_from, date_to)
+    conn = get_connection()
+    try:
+        rows = conn.execute(_CONTACTS_SQL.format(where=where), params).fetchall()
     finally:
         conn.close()
 
     if not search:
         return [_decrypt_row(r) for r in rows]
 
-    # Поиск — только по расшифрованным полям
     s = search.lower()
     result = []
     for row in rows:

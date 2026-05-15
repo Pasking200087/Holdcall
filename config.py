@@ -241,10 +241,6 @@ QTableWidget {
     outline: none;
     alternate-background-color: #F7F9FC;
 }
-QTableWidget::item {
-    padding: 5px 8px;
-    border-bottom: 1px solid #F0F2F5;
-}
 QTableWidget::item:selected {
     background-color: #D6EAF8;
     color: #1C2833;
