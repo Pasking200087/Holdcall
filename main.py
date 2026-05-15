@@ -63,8 +63,26 @@ def _show_main():
     _main_window.show()
 
 
+def _cleanup_old_mei():
+    """Удалить устаревшие папки PyInstaller из прошлых запусков.
+    Без этого новый exe может наткнуться на неполный _MEI* и упасть с
+    'Failed to load Python DLL'."""
+    if not getattr(sys, "frozen", False):
+        return
+    import glob, shutil, tempfile
+    current = getattr(sys, "_MEIPASS", None)
+    for folder in glob.glob(os.path.join(tempfile.gettempdir(), "_MEI*")):
+        if folder == current:
+            continue
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        except Exception:
+            pass
+
+
 def main():
     global _app
+    _cleanup_old_mei()
     _setup_crash_log()
 
     # Включить High DPI масштабирование
