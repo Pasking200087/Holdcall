@@ -5,6 +5,7 @@ crypto.py — Шифрование данных (Fernet / AES-128)
 Без этого файла данные в baza.db нечитаемы.
 """
 import os
+from functools import lru_cache
 from cryptography.fernet import Fernet
 from config import KEY_PATH
 
@@ -44,6 +45,7 @@ def encrypt(value: str) -> str:
     return _get_fernet().encrypt(value.encode("utf-8")).decode("ascii")
 
 
+@lru_cache(maxsize=16384)
 def decrypt(token: str) -> str:
     """Расшифровать base64-строку → исходная строка."""
     if not token:

@@ -106,10 +106,10 @@ def main():
     splash.set_status("Проверка авторизации...", 70)
     QApplication.processEvents()
 
-    # Гарантируем минимальное время показа сплэша (1.6 с)
+    # Гарантируем минимальное время показа сплэша (0.6 с)
     splash.set_status("Готово", 100)
     QApplication.processEvents()
-    remaining_ms = int(max(0.0, 1.6 - (time.monotonic() - t_start)) * 1000)
+    remaining_ms = int(max(0.0, 0.6 - (time.monotonic() - t_start)) * 1000)
     if remaining_ms > 0:
         loop = QEventLoop()
         QTimer.singleShot(remaining_ms, loop.quit)

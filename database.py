@@ -11,6 +11,11 @@ from config import DB_PATH, ROLE_OWNER, ROLE_ADMIN, STATUS_NEW, STATUS_HIDDEN_FR
 import crypto
 
 
+def _invalidate_decrypt_cache() -> None:
+    """Сбросить кэш расшифровки после изменения данных."""
+    crypto.decrypt.cache_clear()
+
+
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
@@ -304,6 +309,7 @@ def update_contact(contact_id: int, name: str, phone: str,
         conn.commit()
     finally:
         conn.close()
+    _invalidate_decrypt_cache()
 
 
 def mark_called(contact_id: int, status: str, call_result: str, user_id: int) -> None:
@@ -368,6 +374,8 @@ def import_contacts_bulk(rows: list[dict], user_id: int) -> int:
         conn.commit()
     finally:
         conn.close()
+    if count:
+        _invalidate_decrypt_cache()
     return count
 
 
@@ -402,6 +410,8 @@ def fix_bitrix_company_fields() -> int:
             conn.commit()
     finally:
         conn.close()
+    if fixed:
+        _invalidate_decrypt_cache()
     return fixed
 
 

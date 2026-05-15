@@ -18,6 +18,8 @@ from config import (
     STATUS_IRRELEVANT, STATUS_HIDDEN_FROM_MANAGERS,
     CONTACT_TYPE_LABELS, CONTACT_PERSON, CONTACT_COMPANY,
 )
+
+_STATUS_BRUSHES: dict = {}  # заполняется при первом вызове _populate_table
 import auth
 import database as db
 
@@ -417,28 +419,39 @@ class MainWindow(QMainWindow):
         self._update_status_bar()
 
     def _populate_table(self):
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(self._contacts))
+        global _STATUS_BRUSHES
+        if not _STATUS_BRUSHES:
+            _STATUS_BRUSHES = {s: QBrush(QColor(c)) for s, c in STATUS_COLORS.items()}
+            _STATUS_BRUSHES.setdefault(STATUS_NEW, QBrush(QColor("#FFFFFF")))
 
+        _TYPE_LABELS = {"юр. лицо", "физ. лицо"}
+        _flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
+
+        self.table.setSortingEnabled(False)
+        self.table.setUpdatesEnabled(False)
+        self.table.setRowCount(len(self._contacts))
+        vh = self.table.verticalHeader()
+        vh.setDefaultSectionSize(32)
+
+        has_tall = False
         for row_idx, c in enumerate(self._contacts):
             status = c.get("status", STATUS_NEW)
-            bg = QColor(STATUS_COLORS.get(status, "#FFFFFF"))
+            brush = _STATUS_BRUSHES.get(status, _STATUS_BRUSHES[STATUS_NEW])
 
-            def cell(text: str) -> QTableWidgetItem:
+            def cell(text: str, _brush=brush, _flags=_flags) -> QTableWidgetItem:
                 item = QTableWidgetItem(str(text) if text else "")
-                item.setBackground(QBrush(bg))
-                item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+                item.setBackground(_brush)
+                item.setFlags(_flags)
                 return item
 
             phone_val = c["phone"] or ""
-            row_h = 52 if "\n" in phone_val else 32
+            if "\n" in phone_val:
+                self.table.setRowHeight(row_idx, 52)
+                has_tall = True
 
             ctype = c.get("contact_type", CONTACT_PERSON)
             type_label = CONTACT_TYPE_LABELS.get(ctype, ctype)
 
-            # Если company содержит метку типа ("Юр. лицо") вместо названия —
-            # реальное название компании хранится в position (артефакт импорта из Битрикса)
-            _TYPE_LABELS = {"юр. лицо", "физ. лицо"}
             company_val  = c.get("company", "") or ""
             position_val = c.get("position", "") or ""
             if company_val.strip().lower() in _TYPE_LABELS:
@@ -448,6 +461,8 @@ class MainWindow(QMainWindow):
                 display_company = company_val
                 display_pos     = position_val
 
+            caller = c.get("caller_name") or c.get("caller_username") or ""
+
             self.table.setItem(row_idx, COL_ID,      cell(c["id"]))
             self.table.setItem(row_idx, COL_TYPE,    cell(type_label))
             self.table.setItem(row_idx, COL_NAME,    cell(c["name"]))
@@ -456,12 +471,10 @@ class MainWindow(QMainWindow):
             self.table.setItem(row_idx, COL_POS,     cell(display_pos))
             self.table.setItem(row_idx, COL_STATUS,  cell(STATUS_LABELS.get(status, status)))
             self.table.setItem(row_idx, COL_RESULT,  cell(c.get("call_result", "")))
-            caller = c.get("caller_name") or c.get("caller_username") or ""
             self.table.setItem(row_idx, COL_CALLER,  cell(caller))
             self.table.setItem(row_idx, COL_DATE,    cell(c.get("call_date", "")))
 
-            self.table.setRowHeight(row_idx, row_h)
-
+        self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
         self._on_selection_changed()
 
