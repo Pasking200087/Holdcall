@@ -167,6 +167,11 @@ for ($i = 1; $i -le 3; $i++) {{
     Start-Sleep -Seconds 3
 }}
 
+# Чистим старые папки PyInstaller из прошлых запусков — иначе новый exe
+# может наткнуться на устаревший _MEI* и выдать "Failed to load Python DLL"
+Get-ChildItem $env:TEMP -Filter "_MEI*" -Directory -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
 if ($copied) {{
     Remove-Item $local_tmp -Force -ErrorAction SilentlyContinue
     Start-Process $exe_path
