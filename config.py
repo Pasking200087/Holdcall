@@ -10,7 +10,7 @@ APP_VERSION = "3.1"
 GITHUB_REPO = "Pasking200087/Holdcall"  # owner/repo
 
 # API-сервер (FastAPI на VPS)
-SERVER_URL = "https://155.212.139.151:8443"
+SERVER_URL = "https://45.144.178.86:8443"
 
 # Путь к папке с данными (рядом с exe или рядом со скриптом)
 if getattr(sys, "frozen", False):
