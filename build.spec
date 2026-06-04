@@ -7,7 +7,9 @@ a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=[
+        ('server_cert.pem', '.'),
+    ],
     hiddenimports=[
         'updater',
         'ui_setup',
@@ -21,6 +23,9 @@ a = Analysis(
         'cryptography.hazmat.backends',
         'openpyxl',
         'sqlite3',
+        'requests',
+        'urllib3',
+        'jwt',
     ],
     hookspath=[],
     hooksconfig={},
