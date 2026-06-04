@@ -93,13 +93,6 @@ def main():
     _app.setApplicationName(APP_NAME)
     _app.setStyleSheet(STYLE_SHEET)
 
-    # ── Настройка пути к базе (первый запуск) ────────────────────────────
-    if not config.DATA_DIR:
-        from ui_setup import SetupDialog
-        dlg = SetupDialog()
-        if dlg.exec_() != 1:
-            sys.exit(0)
-
     # ── Экран приветствия ─────────────────────────────────────────────────
     from ui_splash import SplashScreen
     splash = SplashScreen(APP_VERSION)
@@ -107,17 +100,18 @@ def main():
     QApplication.processEvents()
     t_start = time.monotonic()
 
-    # Инициализация БД
-    splash.set_status("Инициализация базы данных...", 25)
+    # Проверка доступности сервера
+    splash.set_status("Подключение к серверу...", 25)
     try:
         import database as db
         db.init_db()
     except Exception as e:
         splash.close()
         QMessageBox.critical(
-            None, "Ошибка базы данных",
-            f"Не удалось инициализировать базу данных:\n{e}\n\n"
-            f"Путь: {config.DB_PATH}"
+            None, "Ошибка подключения",
+            f"Не удалось подключиться к серверу:\n{e}\n\n"
+            f"Сервер: {config.SERVER_URL}\n\n"
+            "Проверьте интернет-соединение и попробуйте снова."
         )
         sys.exit(1)
 

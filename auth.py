@@ -1,13 +1,31 @@
 """
-auth.py — Аутентификация и управление сессией
+auth.py — Аутентификация через JWT (FastAPI-сервер).
 """
-import bcrypt
 import json
 import os
-import secrets
 from typing import Optional
-from config import ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SPECIALIST, SESSION_PATH
-import database as db
+
+import bcrypt
+import jwt
+import requests
+import urllib3
+
+from config import ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SPECIALIST, SESSION_PATH, SERVER_URL
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_VERIFY = False  # cert.pem подставляется через set_cert()
+_cert_path: Optional[str] = None
+
+
+def set_cert(path: str) -> None:
+    global _VERIFY, _cert_path
+    _cert_path = path
+    _VERIFY = path
+
+
+def _verify():
+    return _cert_path if _cert_path else False
 
 
 # ─── ЛОКАЛЬНАЯ СЕССИЯ ────────────────────────────────────────────────────────
@@ -34,27 +52,7 @@ def _clear_local_token() -> None:
         pass
 
 
-def try_auto_login() -> bool:
-    """Попытаться войти автоматически по сохранённому токену. Возвращает True при успехе."""
-    username, token = _load_local_token()
-    if not username or not token:
-        return False
-    row = db.get_user_by_session_token(token)
-    if row is None or row["username"] != username:
-        _clear_local_token()
-        return False
-    Session.login(row)
-    db.log_action(row["id"], "AUTO_LOGIN", f"Автовход: {username}")
-    return True
-
-
-def logout() -> None:
-    """Выйти: очистить токен в БД и локальный файл сессии."""
-    if Session.is_logged_in():
-        db.clear_session_token(Session.user_id)
-    _clear_local_token()
-    Session.logout()
-
+# ─── SESSION ─────────────────────────────────────────────────────────────────
 
 class Session:
     """Глобальная сессия текущего пользователя."""
@@ -62,13 +60,17 @@ class Session:
     username: str = ""
     full_name: str = ""
     role: str = ""
+    _jwt_token: str = ""
 
     @classmethod
-    def login(cls, row) -> None:
-        cls.user_id = row["id"]
-        cls.username = row["username"]
-        cls.full_name = row["full_name"] or row["username"]
-        cls.role = row["role"]
+    def login_from_payload(cls, payload: dict, token: str) -> None:
+        import database as db
+        cls.user_id   = int(payload["sub"])
+        cls.username  = payload["username"]
+        cls.full_name = payload.get("full_name") or payload["username"]
+        cls.role      = payload["role"]
+        cls._jwt_token = token
+        db.set_token(token)
 
     @classmethod
     def logout(cls) -> None:
@@ -76,6 +78,7 @@ class Session:
         cls.username = ""
         cls.full_name = ""
         cls.role = ""
+        cls._jwt_token = ""
 
     @classmethod
     def is_logged_in(cls) -> bool:
@@ -99,58 +102,106 @@ class Session:
         return ROLE_LABELS.get(cls.role, cls.role)
 
 
+# ─── AUTO LOGIN ──────────────────────────────────────────────────────────────
+
+def try_auto_login() -> bool:
+    """Автовход по сохранённому JWT. Проверяет токен у сервера."""
+    username, token = _load_local_token()
+    if not username or not token:
+        return False
+    try:
+        r = requests.get(
+            f"{SERVER_URL}/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+            verify=_verify(), timeout=10,
+        )
+        if r.status_code != 200:
+            _clear_local_token()
+            return False
+        user = r.json()
+        # Декодируем payload (без проверки подписи — она уже проверена сервером)
+        payload = jwt.decode(token, options={"verify_signature": False})
+        Session.login_from_payload(payload, token)
+        import database as db
+        db.log_action(Session.user_id, "AUTO_LOGIN", f"Автовход: {username}")
+        return True
+    except Exception:
+        _clear_local_token()
+        return False
+
+
+# ─── VERIFY LOGIN ────────────────────────────────────────────────────────────
+
 def verify_login(username: str, password: str) -> tuple[bool, str]:
-    """
-    Проверить логин/пароль.
-    Возвращает (True, "") при успехе или (False, "сообщение") при ошибке.
-    """
+    """Логин через сервер. Возвращает (True, "") или (False, "сообщение")."""
     if not username or not password:
         return False, "Введите логин и пароль"
-
-    row = db.get_user_by_username(username.strip())
-    if row is None:
-        return False, "Пользователь не найден или отключён"
-
     try:
-        ok = bcrypt.checkpw(password.encode(), row["password"].encode())
-    except Exception:
-        return False, "Ошибка проверки пароля"
+        r = requests.post(
+            f"{SERVER_URL}/login",
+            json={"username": username.strip(), "password": password},
+            verify=_verify(), timeout=10,
+        )
+    except requests.exceptions.ConnectionError:
+        return False, f"Нет связи с сервером.\nПроверьте интернет-подключение.\n({SERVER_URL})"
+    except requests.exceptions.Timeout:
+        return False, "Сервер не отвечает (таймаут). Попробуйте позже."
+    except Exception as e:
+        return False, f"Ошибка соединения: {e}"
 
-    if not ok:
-        return False, "Неверный пароль"
+    if r.status_code == 401:
+        return False, "Неверный логин или пароль"
+    if r.status_code != 200:
+        return False, f"Ошибка сервера: {r.status_code}"
 
-    Session.login(row)
-    db.log_action(row["id"], "LOGIN", f"Вход в систему: {username}")
-    token = secrets.token_hex(32)
-    db.set_session_token(row["id"], token)
+    data = r.json()
+    token = data["token"]
+    payload = jwt.decode(token, options={"verify_signature": False})
+    Session.login_from_payload(payload, token)
+
+    import database as db
+    db.log_action(Session.user_id, "LOGIN", f"Вход: {username}")
     _save_local_token(username, token)
     return True, ""
 
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+# ─── LOGOUT ──────────────────────────────────────────────────────────────────
 
+def logout() -> None:
+    if Session.is_logged_in():
+        try:
+            import database as db
+            db.log_action(Session.user_id, "LOGOUT", "Выход из системы")
+        except Exception:
+            pass
+    _clear_local_token()
+    Session.logout()
+
+
+# ─── CHANGE PASSWORD ─────────────────────────────────────────────────────────
 
 def change_password(user_id: int, old_password: str, new_password: str) -> tuple[bool, str]:
-    conn_row = None
-    import sqlite3
-    conn = db.get_connection()
-    try:
-        conn_row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-    finally:
-        conn.close()
-
-    if conn_row is None:
-        return False, "Пользователь не найден"
-
-    if not bcrypt.checkpw(old_password.encode(), conn_row["password"].encode()):
-        return False, "Неверный текущий пароль"
-
     if len(new_password) < 4:
         return False, "Новый пароль должен быть не менее 4 символов"
+    try:
+        r = requests.put(
+            f"{SERVER_URL}/users/{user_id}/password",
+            json={"old_password": old_password, "new_password": new_password},
+            headers={"Authorization": f"Bearer {Session._jwt_token}"},
+            verify=_verify(), timeout=10,
+        )
+    except Exception as e:
+        return False, f"Ошибка соединения: {e}"
 
-    new_hash = hash_password(new_password)
-    db.update_user(user_id, conn_row["full_name"], conn_row["role"],
-                   conn_row["active"], new_hash)
-    db.log_action(user_id, "CHANGE_PASSWORD", "Смена пароля")
+    if r.status_code == 400:
+        return False, r.json().get("detail", "Ошибка")
+    if r.status_code != 200:
+        return False, f"Ошибка сервера: {r.status_code}"
     return True, ""
+
+
+# ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    """Хэширует пароль на клиенте (bcrypt) — для create_user / update_user."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
