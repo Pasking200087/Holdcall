@@ -205,10 +205,10 @@ class MainWindow(QMainWindow):
             act_export.triggered.connect(self._on_export)
             m_file.addAction(act_export)
 
-            act_bitrix = QAction("Экспорт завершённых в Битрикс24...", self)
-            act_bitrix.triggered.connect(self._on_export_bitrix)
-            m_file.addAction(act_bitrix)
-            m_file.addSeparator()
+        act_bitrix = QAction("Экспорт завершённых в Битрикс24...", self)
+        act_bitrix.triggered.connect(self._on_export_bitrix)
+        m_file.addAction(act_bitrix)
+        m_file.addSeparator()
 
         act_logout = QAction("Выйти из аккаунта", self)
         act_logout.triggered.connect(self._on_logout)
@@ -341,11 +341,11 @@ class MainWindow(QMainWindow):
             btn_export.clicked.connect(self._on_export)
             top.addWidget(btn_export)
 
-            btn_bitrix = QPushButton("⭳ В Битрикс")
-            btn_bitrix.setFixedHeight(36)
-            btn_bitrix.setToolTip("Экспорт завершённых контактов в формате Битрикс24")
-            btn_bitrix.clicked.connect(self._on_export_bitrix)
-            top.addWidget(btn_bitrix)
+        btn_bitrix = QPushButton("⭳ В Битрикс")
+        btn_bitrix.setFixedHeight(36)
+        btn_bitrix.setToolTip("Экспорт завершённых контактов в формате Битрикс24")
+        btn_bitrix.clicked.connect(self._on_export_bitrix)
+        top.addWidget(btn_bitrix)
 
         # Кнопка "Отметить звонок" — для всех
         self.btn_call = QPushButton("✓  Отметить звонок")
