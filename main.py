@@ -100,6 +100,14 @@ def main():
     QApplication.processEvents()
     t_start = time.monotonic()
 
+    # Подключение SSL-сертификата сервера
+    import auth
+    cert_path = os.path.join(BASE_DIR, "server_cert.pem")
+    if os.path.exists(cert_path):
+        auth.set_cert(cert_path)
+        import database as db
+        db.set_cert(cert_path)
+
     # Проверка доступности сервера
     splash.set_status("Подключение к серверу...", 25)
     try:
