@@ -116,6 +116,33 @@ class UpdateChecker(QThread):
                 self.check_error.emit(str(e))
 
 
+class ReminderChecker(QThread):
+    """Каждую минуту проверяет контакты с истёкшим временем перезвона."""
+    reminders_due = pyqtSignal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._stop = False
+
+    def run(self):
+        import time
+        while not self._stop:
+            try:
+                contacts = db.get_pending_reminders()
+                if contacts:
+                    self.reminders_due.emit(contacts)
+            except Exception:
+                pass
+            # Проверка каждые 60 секунд, но с шагом 1с для быстрой остановки
+            for _ in range(60):
+                if self._stop:
+                    return
+                time.sleep(1)
+
+    def stop(self):
+        self._stop = True
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -125,6 +152,7 @@ class MainWindow(QMainWindow):
         self._contacts: list[dict] = []
         self._force_quit = False
         self._loader = None
+        self._dialer = None
 
         from ui_splash import make_app_icon
         self._icon = make_app_icon(64)
@@ -152,6 +180,12 @@ class MainWindow(QMainWindow):
         self._update_checker = None
         self._check_update_bg()
 
+        # Проверка напоминаний (перезвон)
+        self._reminder_checker = ReminderChecker(self)
+        self._reminder_checker.reminders_due.connect(self._on_reminders_due)
+        self._reminder_checker.start()
+        self._notified_reminders: set = set()  # id контактов, о которых уже уведомили
+
     # ─── ТРЕЙ ────────────────────────────────────────────────────────────────
 
     def _build_tray(self):
@@ -173,6 +207,12 @@ class MainWindow(QMainWindow):
         self._tray.show()
 
     def _tray_show(self):
+        # Если идёт обзвон и его окно скрыто — возвращаем именно его
+        if self._dialer is not None and not self._dialer.isVisible():
+            self._dialer.showNormal()
+            self._dialer.raise_()
+            self._dialer.activateWindow()
+            return
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -218,29 +258,49 @@ class MainWindow(QMainWindow):
         act_exit.triggered.connect(self.close)
         m_file.addAction(act_exit)
 
-        # Управление (только owner)
-        if auth.Session.is_owner():
+        # Управление (admin и выше)
+        if auth.Session.is_admin_or_above():
             m_admin = mb.addMenu("Управление")
 
-            act_users = QAction("Пользователи...", self)
-            act_users.triggered.connect(self._on_users)
-            m_admin.addAction(act_users)
+            act_stats = QAction("Статистика звонков...", self)
+            act_stats.triggered.connect(self._on_stats)
+            m_admin.addAction(act_stats)
 
-            act_log = QAction("Журнал действий...", self)
-            act_log.triggered.connect(self._on_audit)
-            m_admin.addAction(act_log)
-
-            act_fix = QAction("Исправить поля из Битрикса...", self)
-            act_fix.triggered.connect(self._on_fix_bitrix)
-            m_admin.addAction(act_fix)
+            act_dups = QAction("Найти дубликаты...", self)
+            act_dups.triggered.connect(self._on_duplicates)
+            m_admin.addAction(act_dups)
 
             m_admin.addSeparator()
-            act_dbpath = QAction("Изменить путь к базе...", self)
-            act_dbpath.triggered.connect(self._on_change_db_path)
-            m_admin.addAction(act_dbpath)
+
+            if auth.Session.is_owner():
+                act_users = QAction("Пользователи...", self)
+                act_users.triggered.connect(self._on_users)
+                m_admin.addAction(act_users)
+
+                act_log = QAction("Журнал действий...", self)
+                act_log.triggered.connect(self._on_audit)
+                m_admin.addAction(act_log)
+
+                act_fix = QAction("Исправить поля из Битрикса...", self)
+                act_fix.triggered.connect(self._on_fix_bitrix)
+                m_admin.addAction(act_fix)
+
+                m_admin.addSeparator()
+                act_dbpath = QAction("Изменить путь к базе...", self)
+                act_dbpath.triggered.connect(self._on_change_db_path)
+                m_admin.addAction(act_dbpath)
 
         # Аккаунт
         m_acc = mb.addMenu("Аккаунт")
+        act_goal = QAction("Цель звонков на день...", self)
+        act_goal.triggered.connect(self._on_daily_goal)
+        m_acc.addAction(act_goal)
+
+        act_script = QAction("Скрипт и шаблоны звонка...", self)
+        act_script.triggered.connect(self._on_edit_script)
+        m_acc.addAction(act_script)
+
+        m_acc.addSeparator()
         act_chpw = QAction("Сменить пароль...", self)
         act_chpw.triggered.connect(self._on_change_password)
         m_acc.addAction(act_chpw)
@@ -346,6 +406,14 @@ class MainWindow(QMainWindow):
         btn_bitrix.setToolTip("Экспорт завершённых контактов в формате Битрикс24")
         btn_bitrix.clicked.connect(self._on_export_bitrix)
         top.addWidget(btn_bitrix)
+
+        # Кнопка "Обзвон" — конвейер звонков, для всех
+        btn_dialer = QPushButton("▶  Обзвон")
+        btn_dialer.setObjectName("success")
+        btn_dialer.setFixedHeight(36)
+        btn_dialer.setToolTip("Режим обзвона: перезвоны и новые контакты по очереди")
+        btn_dialer.clicked.connect(self._on_start_dialer)
+        top.addWidget(btn_dialer)
 
         # Кнопка "Отметить звонок" — для всех
         self.btn_call = QPushButton("✓  Отметить звонок")
@@ -593,12 +661,52 @@ class MainWindow(QMainWindow):
             return
         self._open_call_dialog(contact)
 
+    def _on_start_dialer(self):
+        from ui_dialer import DialerDialog
+        dlg = DialerDialog(self)
+        if not dlg.has_queue():
+            QMessageBox.information(
+                self, "Обзвон",
+                "Очередь пуста: нет новых контактов и просроченных перезвонов."
+            )
+            return
+        db.log_action(auth.Session.user_id, "DIALER_START",
+                      f"в очереди={len(dlg._queue)}")
+        self._dialer = dlg
+        self.hide()
+        dlg.exec_()
+        self._dialer = None
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self._refresh()
+
+    def _on_daily_goal(self):
+        from ui_dialer import load_dialer_settings, save_dialer_settings
+        from PyQt5.QtWidgets import QInputDialog
+        settings = load_dialer_settings()
+        goal, ok = QInputDialog.getInt(
+            self, "Цель на день", "Сколько звонков в день — ваша цель?",
+            settings["daily_goal"], 1, 1000
+        )
+        if ok:
+            settings["daily_goal"] = goal
+            save_dialer_settings(settings)
+            self._update_status_bar()
+
+    def _on_edit_script(self):
+        from ui_dialer import ScriptEditDialog
+        ScriptEditDialog(self).exec_()
+
     def _open_call_dialog(self, contact: dict):
         from ui_dialogs import CallDialog
         dlg = CallDialog(self, contact=contact)
         if dlg.exec_():
-            status, result = dlg.get_data()
-            db.mark_called(contact["id"], status, result, auth.Session.user_id)
+            status, result, cb_dt = dlg.get_data()
+            db.mark_called(contact["id"], status, result, auth.Session.user_id, cb_dt)
+            # Если статус изменён с callback — убрать из кэша уведомлений
+            if status != "callback":
+                self._notified_reminders.discard(contact["id"])
             db.log_action(auth.Session.user_id, "MARK_CALL",
                           f"id={contact['id']} status={status}")
             self._refresh()
@@ -756,6 +864,35 @@ class MainWindow(QMainWindow):
         from ui_about import AboutDialog
         AboutDialog(self).exec_()
 
+    def _on_stats(self):
+        from ui_dialogs import StatsDialog
+        StatsDialog(self).exec_()
+
+    def _on_duplicates(self):
+        from ui_dialogs import DuplicatesDialog
+        dlg = DuplicatesDialog(self)
+        dlg.exec_()
+        self._refresh()
+
+    def _on_reminders_due(self, contacts: list):
+        new_contacts = [c for c in contacts if c["id"] not in self._notified_reminders]
+        if not new_contacts:
+            return
+        for c in new_contacts:
+            self._notified_reminders.add(c["id"])
+
+        names = ", ".join(c.get("name") or c.get("phone", "?") for c in new_contacts[:3])
+        suffix = f" и ещё {len(new_contacts) - 3}" if len(new_contacts) > 3 else ""
+        msg = f"Перезвонить: {names}{suffix}"
+
+        if hasattr(self, "_tray") and self._tray.isVisible():
+            self._tray.showMessage(
+                "Напоминание о звонке",
+                msg,
+                QSystemTrayIcon.Information,
+                8000,
+            )
+
     def _on_logout(self):
         db.log_action(auth.Session.user_id, "LOGOUT", "Выход из системы")
         auth.logout()
@@ -813,9 +950,21 @@ class MainWindow(QMainWindow):
         called = counts.get(STATUS_CALLED, 0) + counts.get(STATUS_DONE, 0)
         new = counts.get(STATUS_NEW, 0)
         cb = counts.get(STATUS_CALLBACK, 0)
+
+        # Личный прогресс за сегодня
+        my = ""
+        try:
+            from ui_dialer import fetch_my_today_stats, load_dialer_settings
+            my_calls, my_prod = fetch_my_today_stats()
+            goal = load_dialer_settings()["daily_goal"]
+            my = (f"  |  Сегодня: {my_calls}/{goal} звонков"
+                  f" (результативных: {my_prod})")
+        except Exception:
+            pass
+
         self.status_bar.showMessage(
             f"Всего: {total}  |  Новых: {new}  |  Обзвонено: {called}  |  "
-            f"Перезвонить: {cb}  |  Показано: {len(self._contacts)}"
+            f"Перезвонить: {cb}  |  Показано: {len(self._contacts)}{my}"
         )
 
     def closeEvent(self, event):
@@ -832,6 +981,8 @@ class MainWindow(QMainWindow):
             return
         self._timer.stop()
         self._update_timer.stop()
+        if hasattr(self, "_reminder_checker"):
+            self._reminder_checker.stop()
         if hasattr(self, "_tray"):
             self._tray.hide()
         event.accept()

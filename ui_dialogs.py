@@ -6,11 +6,12 @@ from PyQt5.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox,
     QTextEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QMessageBox,
-    QGroupBox, QCheckBox, QSizePolicy, QDialogButtonBox
+    QGroupBox, QCheckBox, QSizePolicy, QDialogButtonBox,
+    QFrame, QScrollArea, QWidget,
 )
-from PyQt5.QtCore import Qt, QDate
+from PyQt5.QtCore import Qt, QDate, QDateTime
 from PyQt5.QtGui import QColor, QBrush
-from PyQt5.QtWidgets import QDateEdit
+from PyQt5.QtWidgets import QDateEdit, QDateTimeEdit
 
 from config import (
     ROLE_OWNER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SPECIALIST, ROLE_LABELS,
@@ -133,18 +134,42 @@ class CallDialog(QDialog):
         grp_layout.addRow("Компания:",QLabel(self._contact.get("company", "—")))
         layout.addWidget(grp)
 
+        # Быстрые исходы — один клик выбирает статус
+        from ui_dialer import QUICK_STATUSES, make_quick_button
+        from PyQt5.QtWidgets import QGridLayout
+        quick = QGridLayout()
+        quick.setSpacing(6)
+        for i, (status, color) in enumerate(QUICK_STATUSES):
+            btn = make_quick_button(status, color)
+            btn.clicked.connect(lambda _, s=status: self._select_status(s))
+            quick.addWidget(btn, i // 4, i % 4)
+        layout.addLayout(quick)
+
         # Статус
         lbl_s = QLabel("Статус звонка:")
         layout.addWidget(lbl_s)
         self.combo_status = QComboBox()
         for k, v in STATUS_LABELS.items():
             self.combo_status.addItem(v, k)
-        # Выбрать текущий статус
         cur = self._contact.get("status", STATUS_CALLED)
         idx = self.combo_status.findData(cur)
         if idx >= 0:
             self.combo_status.setCurrentIndex(idx)
+        self.combo_status.currentIndexChanged.connect(self._on_status_changed)
         layout.addWidget(self.combo_status)
+
+        # Блок даты перезвона (видим только при статусе callback)
+        self._cb_frame = QFrame()
+        cb_form = QFormLayout(self._cb_frame)
+        cb_form.setContentsMargins(0, 4, 0, 0)
+        cb_form.setSpacing(6)
+        self.dt_callback = QDateTimeEdit()
+        self.dt_callback.setCalendarPopup(True)
+        self.dt_callback.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.dt_callback.setDateTime(QDateTime.currentDateTime().addSecs(3600))
+        cb_form.addRow("Перезвонить в:", self.dt_callback)
+        layout.addWidget(self._cb_frame)
+        self._cb_frame.setVisible(cur == STATUS_CALLBACK)
 
         # Результат
         lbl_r = QLabel("Результат / комментарий:")
@@ -154,6 +179,23 @@ class CallDialog(QDialog):
         self.edit_result.setPlaceholderText("Краткий итог разговора...")
         self.edit_result.setPlainText(self._contact.get("call_result", ""))
         layout.addWidget(self.edit_result)
+
+        # Шаблоны комментариев
+        from ui_dialer import load_dialer_settings, make_template_combo
+        self._dialer_settings = load_dialer_settings()
+        layout.addWidget(make_template_combo(self._dialer_settings["templates"], self.edit_result))
+
+        # Скрипт разговора (сворачиваемый)
+        self._btn_script = QPushButton("Скрипт разговора  ▾")
+        self._btn_script.setFixedHeight(28)
+        self._btn_script.clicked.connect(self._toggle_script)
+        layout.addWidget(self._btn_script)
+        self._script_view = QTextEdit()
+        self._script_view.setReadOnly(True)
+        self._script_view.setPlainText(self._dialer_settings["script"])
+        self._script_view.setFixedHeight(150)
+        self._script_view.hide()
+        layout.addWidget(self._script_view)
 
         # Кнопки
         btns = QHBoxLayout()
@@ -167,10 +209,30 @@ class CallDialog(QDialog):
         btns.addWidget(btn_ok)
         layout.addLayout(btns)
 
-    def get_data(self) -> tuple[str, str]:
+    def _select_status(self, status: str):
+        idx = self.combo_status.findData(status)
+        if idx >= 0:
+            self.combo_status.setCurrentIndex(idx)
+
+    def _toggle_script(self):
+        show = self._script_view.isHidden()
+        self._script_view.setVisible(show)
+        self._btn_script.setText("Скрыть скрипт  ▴" if show else "Скрипт разговора  ▾")
+        # Меняем высоту окна вместе со скриптом, чтобы поля не сжимались
+        delta = 150
+        h = self.height() + (delta if show else -delta)
+        self.resize(self.width(), max(h, self.minimumSizeHint().height()))
+
+    def _on_status_changed(self):
+        self._cb_frame.setVisible(self.combo_status.currentData() == STATUS_CALLBACK)
+
+    def get_data(self) -> tuple[str, str, str]:
         status = self.combo_status.currentData()
         result = self.edit_result.toPlainText().strip()
-        return status, result
+        cb_dt = ""
+        if status == STATUS_CALLBACK:
+            cb_dt = self.dt_callback.dateTime().toString("yyyy-MM-dd HH:mm")
+        return status, result, cb_dt
 
 
 # ─── УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ───────────────────────────────────────────────
@@ -548,3 +610,275 @@ class ChangePasswordDialog(QDialog):
             self.accept()
         else:
             self.lbl_err.setText(msg)
+
+
+# ─── СТАТИСТИКА ───────────────────────────────────────────────────────────────
+
+class StatsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Статистика звонков")
+        self.setMinimumSize(620, 460)
+        self.setModal(True)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        # Период
+        period_row = QHBoxLayout()
+        period_row.setSpacing(8)
+        period_row.addWidget(QLabel("Период:"))
+
+        today = QDate.currentDate()
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(today.addDays(-30))
+        self.date_from.setDisplayFormat("dd.MM.yyyy")
+        period_row.addWidget(self.date_from)
+
+        period_row.addWidget(QLabel("—"))
+
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(today)
+        self.date_to.setDisplayFormat("dd.MM.yyyy")
+        period_row.addWidget(self.date_to)
+
+        # Быстрые кнопки периода
+        for label, days in [("Сегодня", 0), ("7 дней", 6), ("Месяц", 29)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(28)
+            btn.clicked.connect(lambda _, d=days: self._set_period(d))
+            period_row.addWidget(btn)
+
+        period_row.addStretch()
+        btn_load = QPushButton("Показать")
+        btn_load.setObjectName("success")
+        btn_load.setFixedHeight(28)
+        btn_load.clicked.connect(self._load)
+        period_row.addWidget(btn_load)
+        layout.addLayout(period_row)
+
+        # Сводные карточки
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(12)
+        self._lbl_total      = self._make_card(cards_row, "Всего звонков", "#2C3E50")
+        self._lbl_productive = self._make_card(cards_row, "Результативных", "#27AE60")
+        self._lbl_callback   = self._make_card(cards_row, "Перезвонить",   "#E67E22")
+        layout.addLayout(cards_row)
+
+        # Таблица по сотрудникам
+        layout.addWidget(QLabel("По сотрудникам:"))
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Сотрудник", "Всего", "Результативных", "Перезвонить"])
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        layout.addWidget(self.table)
+
+        btn_close = QPushButton("Закрыть")
+        btn_close.clicked.connect(self.accept)
+        h = QHBoxLayout()
+        h.addStretch()
+        h.addWidget(btn_close)
+        layout.addLayout(h)
+
+        self._load()
+
+    def _make_card(self, parent_layout, title: str, color: str) -> QLabel:
+        frame = QFrame()
+        frame.setStyleSheet(
+            f"QFrame {{ background: {color}; border-radius: 8px; }}"
+        )
+        fl = QVBoxLayout(frame)
+        fl.setContentsMargins(14, 10, 14, 10)
+        fl.setSpacing(2)
+        lbl_title = QLabel(title)
+        lbl_title.setStyleSheet("color: rgba(255,255,255,0.8); font-size: 11px;")
+        fl.addWidget(lbl_title)
+        lbl_val = QLabel("—")
+        lbl_val.setStyleSheet("color: #FFFFFF; font-size: 28px; font-weight: bold;")
+        fl.addWidget(lbl_val)
+        parent_layout.addWidget(frame)
+        return lbl_val
+
+    def _set_period(self, days: int):
+        today = QDate.currentDate()
+        self.date_from.setDate(today.addDays(-days))
+        self.date_to.setDate(today)
+        self._load()
+
+    def _load(self):
+        import database as db
+        date_from = self.date_from.date().toString("yyyy-MM-dd")
+        date_to   = self.date_to.date().toString("yyyy-MM-dd")
+        try:
+            data = db.get_stats(date_from, date_to)
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить статистику:\n{e}")
+            return
+
+        self._lbl_total.setText(str(data.get("total", 0)))
+        self._lbl_productive.setText(str(data.get("productive", 0)))
+        self._lbl_callback.setText(str(data.get("callback", 0)))
+
+        by_user = data.get("by_user", [])
+        self.table.setRowCount(len(by_user))
+        flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
+        for i, u in enumerate(by_user):
+            for col, val in enumerate([u["name"], u["calls"], u["productive"], u["callback"]]):
+                item = QTableWidgetItem(str(val))
+                item.setFlags(flags)
+                if col > 0:
+                    item.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(i, col, item)
+
+
+# ─── ДУБЛИКАТЫ ────────────────────────────────────────────────────────────────
+
+class DuplicatesDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Поиск дубликатов")
+        self.setMinimumSize(760, 520)
+        self.setModal(True)
+        self._groups: list = []
+        self._build_ui()
+        self._load()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        self.lbl_info = QLabel("Поиск групп контактов с одинаковым номером телефона...")
+        layout.addWidget(self.lbl_info)
+
+        # Таблица групп
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["", "ID", "Имя", "Телефон", "Дата звонка"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table.setColumnWidth(0, 24)
+        self.table.setColumnWidth(1, 50)
+        layout.addWidget(self.table)
+
+        # Кнопки
+        btns = QHBoxLayout()
+        self.lbl_sel = QLabel("Выберите дубликаты для удаления (оставьте нужный без галочки)")
+        self.lbl_sel.setStyleSheet("color: #7F8C8D; font-size: 11px;")
+        btns.addWidget(self.lbl_sel)
+        btns.addStretch()
+        btn_merge = QPushButton("Удалить выбранные")
+        btn_merge.setObjectName("danger")
+        btn_merge.clicked.connect(self._on_merge)
+        btn_close = QPushButton("Закрыть")
+        btn_close.clicked.connect(self.accept)
+        btns.addWidget(btn_merge)
+        btns.addWidget(btn_close)
+        layout.addLayout(btns)
+
+    def _load(self):
+        import database as db
+        try:
+            self._groups = db.get_duplicates()
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить дубликаты:\n{e}")
+            return
+        self._populate()
+
+    def _populate(self):
+        from config import STATUS_LABELS
+        groups = self._groups
+        total_dups = sum(len(g) - 1 for g in groups)
+        self.lbl_info.setText(
+            f"Найдено групп: {len(groups)}  |  Возможных дубликатов: {total_dups}"
+            if groups else "Дубликатов не найдено."
+        )
+
+        # Собираем строки: разделитель группы + строки контактов
+        rows_data = []
+        for g in groups:
+            rows_data.append(("separator", g))
+            for c in g:
+                rows_data.append(("contact", c))
+
+        self.table.setRowCount(len(rows_data))
+        self._checkboxes: dict[int, QCheckBox] = {}  # row -> checkbox
+        flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
+        row_idx = 0
+
+        for kind, data in rows_data:
+            if kind == "separator":
+                # Заголовок группы
+                self.table.setSpan(row_idx, 0, 1, 5)
+                first_phone = data[0]["phone"].split("\n")[0] if data else ""
+                item = QTableWidgetItem(f"  Телефон: {first_phone}  —  {len(data)} контакта(ов)")
+                item.setBackground(QBrush(QColor("#EBF5FB")))
+                item.setFont(self.table.font())
+                item.setFlags(Qt.ItemIsEnabled)
+                self.table.setItem(row_idx, 0, item)
+                row_idx += 1
+            else:
+                c = data
+                cb = QCheckBox()
+                cb_widget = QWidget()
+                cb_layout = QHBoxLayout(cb_widget)
+                cb_layout.setContentsMargins(4, 0, 0, 0)
+                cb_layout.addWidget(cb)
+                self.table.setCellWidget(row_idx, 0, cb_widget)
+                self._checkboxes[row_idx] = cb
+
+                for col, val in enumerate([c["id"], c["name"], c["phone"], c["call_date"]], start=1):
+                    item = QTableWidgetItem(str(val) if val else "")
+                    item.setFlags(flags)
+                    self.table.setItem(row_idx, col, item)
+                row_idx += 1
+
+    def _on_merge(self):
+        to_delete = []
+        for row, cb in self._checkboxes.items():
+            if cb.isChecked():
+                id_item = self.table.item(row, 1)
+                if id_item:
+                    try:
+                        to_delete.append(int(id_item.text()))
+                    except ValueError:
+                        pass
+
+        if not to_delete:
+            QMessageBox.information(self, "Дубликаты", "Ничего не выбрано.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Удаление дубликатов",
+            f"Удалить {len(to_delete)} контакт(ов)? Это действие необратимо.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        import database as db
+        import auth
+        try:
+            count = db.merge_contacts(0, to_delete)
+            db.log_action(auth.Session.user_id, "MERGE_DUPLICATES", f"удалено={count}")
+            QMessageBox.information(self, "Готово", f"Удалено {count} дубликат(ов).")
+            self._load()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
