@@ -3,9 +3,11 @@ server.py — FastAPI-сервер базы контактов
 Хранит baza.db и baza.key локально; клиенты подключаются по HTTPS.
 """
 import os
+import re
 import sqlite3
 import threading
 import secrets
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -14,6 +16,7 @@ import bcrypt
 import jwt
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -28,6 +31,15 @@ JWT_DAYS = 30
 
 STATUS_HIDDEN = {"irrelevant", "no_answer", "rude"}
 CONTACT_PERSON = "person"
+
+_HTML = Path(__file__).parent / "static" / "index.html"
+
+
+def _ensure_hash(pw: str) -> str:
+    """Принять bcrypt-хэш или открытый пароль — вернуть хэш."""
+    if pw and (pw.startswith("$2b$") or pw.startswith("$2a$") or pw.startswith("$2y$")):
+        return pw
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
 def _jwt_secret() -> str:
     p = Path(JWT_FILE)
@@ -113,6 +125,24 @@ def _contacts_where(status_filter, type_filter, hide_irrelevant, date_from, date
 app = FastAPI(title="Baza API", docs_url=None, redoc_url=None)
 _bearer = HTTPBearer()
 
+
+@app.get("/")
+def root():
+    return FileResponse(_HTML)
+
+
+@app.on_event("startup")
+def _migrate():
+    """Безопасная миграция: добавляет новые колонки если их нет."""
+    c = _conn()
+    try:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(contacts)").fetchall()}
+        if "callback_datetime" not in cols:
+            c.execute("ALTER TABLE contacts ADD COLUMN callback_datetime TEXT DEFAULT ''")
+            c.commit()
+    finally:
+        c.close()
+
 def _make_token(user: dict) -> str:
     payload = {
         "sub":       str(user["id"]),
@@ -166,6 +196,7 @@ class ContactUpdate(BaseModel):
 class CallMark(BaseModel):
     status: str
     call_result: str = ""
+    callback_datetime: str = ""
 
 class DeleteBulk(BaseModel):
     ids: list[int]
@@ -200,6 +231,10 @@ class PasswordChange(BaseModel):
 class LogEntry(BaseModel):
     action: str
     details: str = ""
+
+class MergeReq(BaseModel):
+    keep_id: int
+    delete_ids: list[int]
 
 # ─── ROUTES: AUTH ────────────────────────────────────────────────────────────
 
@@ -306,11 +341,13 @@ def update_contact(cid: int, req: ContactUpdate, p: dict = Depends(_admin)):
 @app.post("/contacts/{cid}/call")
 def mark_call(cid: int, req: CallMark, p: dict = Depends(_get_payload)):
     user_id = int(p["sub"])
+    # При смене статуса с callback на другой — сбрасываем дату напоминания
+    cb_dt = req.callback_datetime if req.status == "callback" else ""
     c = _conn()
     try:
         c.execute(
-            "UPDATE contacts SET status=?,call_result=?,called_by=?,call_date=? WHERE id=?",
-            (req.status, req.call_result, user_id, _now(), cid)
+            "UPDATE contacts SET status=?,call_result=?,called_by=?,call_date=?,callback_datetime=? WHERE id=?",
+            (req.status, req.call_result, user_id, _now(), cb_dt, cid)
         )
         c.commit()
     finally:
@@ -373,6 +410,123 @@ def fix_bitrix(p: dict = Depends(_owner)):
         c.close()
     return {"count": fixed}
 
+# ─── ROUTES: STATS ───────────────────────────────────────────────────────────
+
+@app.get("/stats")
+def get_stats(date_from: str = "", date_to: str = "", p: dict = Depends(_get_payload)):
+    where = "WHERE c.is_deleted=0 AND c.call_date != '' AND c.call_date IS NOT NULL"
+    params: list = []
+    if date_from:
+        where += " AND c.call_date >= ?"
+        params.append(date_from)
+    if date_to:
+        where += " AND c.call_date <= ?"
+        params.append(date_to + " 23:59:59")
+
+    c = _conn()
+    try:
+        rows = c.execute(
+            f"SELECT c.status, c.called_by, u.full_name, u.username "
+            f"FROM contacts c LEFT JOIN users u ON c.called_by=u.id {where}",
+            params,
+        ).fetchall()
+    finally:
+        c.close()
+
+    total      = len(rows)
+    productive = sum(1 for r in rows if r["status"] in ("productive", "done"))
+    callback   = sum(1 for r in rows if r["status"] == "callback")
+
+    by_user: dict = defaultdict(lambda: {"calls": 0, "productive": 0, "callback": 0})
+    for r in rows:
+        name = r["full_name"] or r["username"] or "—"
+        by_user[name]["calls"] += 1
+        if r["status"] in ("productive", "done"):
+            by_user[name]["productive"] += 1
+        if r["status"] == "callback":
+            by_user[name]["callback"] += 1
+
+    return {
+        "total":      total,
+        "productive": productive,
+        "callback":   callback,
+        "by_user":    [{"name": k, **v} for k, v in sorted(by_user.items())],
+    }
+
+# ─── ROUTES: REMINDERS ───────────────────────────────────────────────────────
+
+@app.get("/contacts/reminders")
+def get_reminders(p: dict = Depends(_get_payload)):
+    """Контакты с истёкшим временем перезвона (callback_datetime <= сейчас)."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    c = _conn()
+    try:
+        rows = c.execute(
+            "SELECT c.*, u.full_name as caller_name, u.username as caller_username "
+            "FROM contacts c LEFT JOIN users u ON c.called_by=u.id "
+            "WHERE c.is_deleted=0 AND c.status='callback' "
+            "AND c.callback_datetime != '' AND c.callback_datetime IS NOT NULL "
+            "AND c.callback_datetime <= ?",
+            (now,),
+        ).fetchall()
+    finally:
+        c.close()
+    return [_decrypt_row(r) for r in rows]
+
+# ─── ROUTES: DUPLICATES ──────────────────────────────────────────────────────
+
+def _normalize_phone_digits(phone_str: str) -> str:
+    digits = re.sub(r"[^\d]", "", phone_str)
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    return digits
+
+@app.get("/contacts/duplicates")
+def get_duplicates(p: dict = Depends(_admin)):
+    """Вернуть группы контактов с одинаковым нормализованным телефоном."""
+    c = _conn()
+    try:
+        rows = c.execute(
+            "SELECT c.id, c.name, c.phone, c.company, c.status, c.call_date "
+            "FROM contacts c WHERE c.is_deleted=0"
+        ).fetchall()
+    finally:
+        c.close()
+
+    groups: dict = defaultdict(list)
+    for r in rows:
+        phone_dec = _dec(r["phone"])
+        first_phone = phone_dec.split("\n")[0] if phone_dec else ""
+        if not first_phone:
+            continue
+        key = _normalize_phone_digits(first_phone)
+        if len(key) < 10:
+            continue
+        groups[key].append({
+            "id":        r["id"],
+            "name":      _dec(r["name"]),
+            "phone":     phone_dec,
+            "company":   _dec(r["company"]),
+            "status":    r["status"] or "",
+            "call_date": r["call_date"] or "",
+        })
+
+    return [g for g in groups.values() if len(g) >= 2]
+
+@app.post("/contacts/merge")
+def merge_contacts(req: MergeReq, p: dict = Depends(_admin)):
+    """Удалить дубликаты, оставить keep_id."""
+    if not req.delete_ids:
+        return {"count": 0}
+    c = _conn()
+    try:
+        ph = ",".join("?" * len(req.delete_ids))
+        c.execute(f"UPDATE contacts SET is_deleted=1 WHERE id IN ({ph})", req.delete_ids)
+        c.commit()
+    finally:
+        c.close()
+    return {"count": len(req.delete_ids)}
+
 # ─── ROUTES: USERS ───────────────────────────────────────────────────────────
 
 @app.get("/users")
@@ -390,7 +544,7 @@ def create_user(req: UserCreate, p: dict = Depends(_owner)):
     try:
         cur = c.execute(
             "INSERT INTO users (username,password,role,full_name,active,created_at) VALUES (?,?,?,?,1,?)",
-            (req.username, req.password_hash, req.role, req.full_name, _now())
+            (req.username, _ensure_hash(req.password_hash), req.role, req.full_name, _now())
         )
         c.commit()
         return {"id": cur.lastrowid}
@@ -406,7 +560,7 @@ def update_user(uid: int, req: UserUpdate, p: dict = Depends(_owner)):
         if req.password_hash:
             c.execute(
                 "UPDATE users SET full_name=?,role=?,active=?,password=? WHERE id=?",
-                (req.full_name, req.role, req.active, req.password_hash, uid)
+                (req.full_name, req.role, req.active, _ensure_hash(req.password_hash), uid)
             )
         else:
             c.execute(

@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>База контактов</title>
+<style>
+:root {
+  --primary:#2C3E50; --primary-h:#34495E; --primary-l:#EBF5FB;
+  --danger:#E74C3C; --success:#27AE60; --warn:#F39C12;
+  --bg:#F0F2F5; --card:#fff; --border:#E2E8F0;
+  --text:#2D3748; --muted:#718096; --radius:8px;
+  --shadow:0 2px 8px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+
+/* ── Login ── */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:40px;width:360px}
+.login-card h1{font-size:22px;color:var(--primary);margin-bottom:6px}
+.login-card p{color:var(--muted);margin-bottom:24px}
+
+/* ── Forms ── */
+.fg{margin-bottom:14px}
+.fg label{display:block;margin-bottom:5px;font-weight:600;font-size:12px;color:var(--muted)}
+.fg input,.fg select,.fg textarea{
+  width:100%;padding:8px 11px;border:1.5px solid #CDD2D8;border-radius:6px;
+  font-size:13px;background:#fff;color:var(--text);font-family:inherit;
+  transition:border-color .15s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:#2980B9}
+.fg textarea{resize:vertical}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border:none;
+  border-radius:6px;font-size:13px;font-family:inherit;cursor:pointer;
+  transition:background .15s;white-space:nowrap;text-decoration:none}
+.btn-p{background:var(--primary);color:#fff}.btn-p:hover{background:var(--primary-h)}
+.btn-d{background:var(--danger);color:#fff}.btn-d:hover{background:#C0392B}
+.btn-s{background:var(--success);color:#fff}.btn-s:hover{background:#219A52}
+.btn-n{background:#ECF0F1;color:var(--text)}.btn-n:hover{background:#D5DBDB}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-full{width:100%;justify-content:center}
+
+/* ── Navbar ── */
+#app{display:flex;flex-direction:column;min-height:100vh}
+.nav{background:var(--primary);color:#fff;padding:0 20px;display:flex;
+  align-items:center;gap:4px;height:52px;flex-shrink:0}
+.nav-brand{font-size:15px;font-weight:700;margin-right:20px}
+.nav-tab{padding:6px 13px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.75);
+  font-size:13px;border:none;background:transparent;font-family:inherit;transition:all .15s}
+.nav-tab:hover{background:rgba(255,255,255,.12);color:#fff}
+.nav-tab.active{background:rgba(255,255,255,.2);color:#fff}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.user-badge{font-size:12px;color:rgba(255,255,255,.65)}
+
+/* ── Content ── */
+.content{flex:1;padding:20px;overflow:auto}
+
+/* ── Filter bar ── */
+.fbar{background:var(--card);border-radius:var(--radius);padding:14px 16px;
+  margin-bottom:16px;box-shadow:var(--shadow);display:flex;gap:10px;
+  align-items:flex-end;flex-wrap:wrap}
+.fbar .fg{margin-bottom:0;flex:1;min-width:120px}
+.fbar .fg.wide{flex:2;min-width:180px}
+.fbar .fg.auto{flex:0 0 auto}
+
+/* ── Table card ── */
+.tcard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.tbar{padding:11px 15px;border-bottom:1px solid var(--border);
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tbar .cnt{color:var(--muted);font-size:12px;margin-left:auto}
+.tscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--primary);color:#fff;padding:9px 12px;text-align:left;
+  font-weight:600;font-size:12px;white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;
+  max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr[data-id]{cursor:pointer}
+tr[data-id]:hover td{background:#F7FAFC}
+tr.sel td{background:#D6EAF8!important}
+.ra{display:flex;gap:4px;opacity:0;transition:opacity .15s}
+tr:hover .ra{opacity:1}
+
+/* ── Status badge ── */
+.sb{display:inline-block;padding:2px 8px;border-radius:12px;
+  font-size:11px;font-weight:700;white-space:nowrap}
+
+/* ── Stats grid ── */
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:18px}
+.scard{background:var(--card);border-radius:var(--radius);padding:20px;
+  box-shadow:var(--shadow);text-align:center}
+.scard .val{font-size:36px;font-weight:700;color:var(--primary)}
+.scard .lbl{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* ── Modal ── */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+  align-items:center;justify-content:center;z-index:100;padding:20px}
+.ov.h{display:none}
+.modal{background:var(--card);border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,.18);width:100%;max-width:510px;
+  max-height:90vh;overflow-y:auto}
+.mh{padding:17px 20px 13px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between}
+.mh h2{font-size:15px;color:var(--primary)}
+.mc-btn{background:none;border:none;cursor:pointer;font-size:20px;
+  color:var(--muted);line-height:1;padding:2px}
+.mc-btn:hover{color:var(--text)}
+.mb{padding:18px 20px}
+.mf{padding:13px 20px;border-top:1px solid var(--border);
+  display:flex;gap:8px;justify-content:flex-end}
+
+/* ── Status radio grid ── */
+.sgr{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
+.sr{display:none}
+.sl{display:block;padding:7px 10px;border:2px solid var(--border);border-radius:6px;
+  cursor:pointer;text-align:center;font-size:12px;font-weight:700;transition:all .15s}
+.sr:checked+.sl{border-color:var(--primary);box-shadow:0 0 0 2px rgba(44,62,80,.15)}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:22px;right:22px;padding:11px 18px;border-radius:8px;
+  font-size:13px;color:#fff;opacity:0;transform:translateY(8px);
+  transition:all .25s;z-index:999;pointer-events:none;max-width:300px}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.ok{background:var(--success)}
+#toast.err{background:var(--danger)}
+#toast.info{background:var(--primary)}
+
+/* ── Misc ── */
+.h{display:none!important}
+.em{text-align:center;padding:44px;color:var(--muted)}
+.err-msg{color:var(--danger);font-size:12px;margin-top:5px}
+.ck{display:flex;align-items:center;gap:6px}
+.ck input{width:14px;height:14px;cursor:pointer;accent-color:var(--primary)}
+.info-box{background:#F7FAFC;border-radius:6px;padding:12px;margin-bottom:14px;line-height:1.6}
+.prd-btn{background:#ECF0F1;color:var(--text)}.prd-btn:hover{background:#D5DBDB}
+.prd-btn.active{background:var(--primary);color:#fff}
+@media(max-width:640px){.sgrid{grid-template-columns:1fr}.sgr{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>📋 База контактов</h1>
+    <p>Войдите, чтобы продолжить</p>
+    <div class="fg"><label>Логин</label>
+      <input id="inp-u" type="text" placeholder="username" autocomplete="username"></div>
+    <div class="fg"><label>Пароль</label>
+      <input id="inp-p" type="password" placeholder="••••••" autocomplete="current-password"></div>
+    <div id="l-err" class="err-msg h"></div>
+    <button class="btn btn-p btn-full" id="btn-login" style="margin-top:10px">Войти</button>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app" class="h">
+  <nav class="nav">
+    <span class="nav-brand">📋 База</span>
+    <button class="nav-tab active" data-tab="contacts">Контакты</button>
+    <button class="nav-tab" data-tab="stats">Статистика</button>
+    <button class="nav-tab" data-tab="productive">✅ Результативные</button>
+    <button class="nav-tab adm" data-tab="users">Пользователи</button>
+    <button class="nav-tab own" data-tab="audit">Аудит</button>
+    <div class="nav-right">
+      <span class="user-badge" id="uinfo"></span>
+      <button class="btn btn-sm btn-n" id="btn-out">Выйти</button>
+    </div>
+  </nav>
+  <div class="content">
+
+    <!-- CONTACTS TAB -->
+    <div id="tab-contacts">
+      <div class="fbar">
+        <div class="fg wide"><label>Поиск</label>
+          <input id="f-q" type="text" placeholder="Имя, телефон, компания…"></div>
+        <div class="fg"><label>Статус</label>
+          <select id="f-st">
+            <option value="">Все</option>
+            <option value="new">Новый</option>
+            <option value="called">Обзвонен</option>
+            <option value="callback">Перезвонить</option>
+            <option value="done">Завершён</option>
+            <option value="productive">Результативный</option>
+            <option value="irrelevant">Не актуален</option>
+            <option value="no_answer">Не отвечает</option>
+            <option value="rude">Грубый</option>
+          </select></div>
+        <div class="fg"><label>Тип</label>
+          <select id="f-tp">
+            <option value="">Все</option>
+            <option value="person">Физ. лицо</option>
+            <option value="company">Юр. лицо</option>
+          </select></div>
+        <div class="fg"><label>С даты</label><input id="f-df" type="date"></div>
+        <div class="fg"><label>По дату</label><input id="f-dt" type="date"></div>
+        <div class="fg auto"><label>&nbsp;</label>
+          <div class="ck" style="padding:8px 0">
+            <input type="checkbox" id="f-hi"><label for="f-hi">Скрыть нерел.</label>
+          </div></div>
+        <div class="fg auto"><label>&nbsp;</label>
+          <button class="btn btn-n" id="btn-ref">↻ Обновить</button></div>
+      </div>
+      <div class="tcard">
+        <div class="tbar">
+          <button class="btn btn-p btn-sm adm" id="btn-add">+ Добавить</button>
+          <button class="btn btn-d btn-sm h" id="btn-del-sel">Удалить выбранные</button>
+          <span class="cnt" id="c-cnt"></span>
+        </div>
+        <div class="tscroll">
+          <table>
+            <thead><tr>
+              <th style="width:34px"><input type="checkbox" id="chk-all" style="accent-color:#fff;cursor:pointer"></th>
+              <th style="width:38px">#</th>
+              <th>Имя</th><th>Телефон</th><th>Компания</th><th>Должность</th>
+              <th>Статус</th><th>Результат</th><th>Перезвонить</th>
+              <th>Дата звонка</th><th>Кто звонил</th><th style="width:70px"></th>
+            </tr></thead>
+            <tbody id="ctb"><tr><td colspan="12" class="em">Загрузка…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS TAB -->
+    <div id="tab-stats" class="h">
+      <div class="fbar">
+        <div class="fg"><label>С даты</label><input id="s-df" type="date"></div>
+        <div class="fg"><label>По дату</label><input id="s-dt" type="date"></div>
+        <div class="fg auto"><label>&nbsp;</label>
+          <button class="btn btn-p" id="btn-stats">Показать</button></div>
+      </div>
+      <div class="sgrid">
+        <div class="scard"><div class="val" id="st-tot">—</div><div class="lbl">Всего звонков</div></div>
+        <div class="scard"><div class="val" id="st-pro">—</div><div class="lbl">Результативных</div></div>
+        <div class="scard"><div class="val" id="st-cb">—</div><div class="lbl">Перезвонить</div></div>
+      </div>
+      <div class="tcard">
+        <table>
+          <thead><tr><th>Сотрудник</th><th>Звонков</th><th>Результат.</th><th>Перезвон.</th><th>%</th></tr></thead>
+          <tbody id="stb"><tr><td colspan="5" class="em">Выберите период и нажмите «Показать»</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PRODUCTIVE TAB -->
+    <div id="tab-productive" class="h">
+      <!-- Period buttons (как в Telegram) -->
+      <div class="fbar" style="gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm prd-btn" data-days="0" data-lbl="Сегодня">📅 Сегодня</button>
+          <button class="btn btn-sm prd-btn" data-days="6" data-lbl="7 дней">📅 7 дней</button>
+          <button class="btn btn-sm prd-btn" data-days="29" data-lbl="Месяц">📅 Месяц</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-left:auto;flex-wrap:wrap">
+          <div class="fg" style="margin:0;min-width:130px"><label>С даты</label><input id="p-df" type="date"></div>
+          <div class="fg" style="margin:0;min-width:130px"><label>По дату</label><input id="p-dt" type="date"></div>
+          <button class="btn btn-p btn-sm" id="btn-p-custom" style="margin-bottom:1px">Показать</button>
+        </div>
+      </div>
+
+      <!-- Summary cards -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:18px" id="p-cards">
+        <div class="scard"><div class="val" id="p-cnt-prod" style="color:var(--success)">—</div><div class="lbl">Результативных</div></div>
+        <div class="scard"><div class="val" id="p-cnt-done">—</div><div class="lbl">Завершённых</div></div>
+        <div class="scard"><div class="val" id="p-period-lbl" style="font-size:16px;padding-top:6px">—</div><div class="lbl">Период</div></div>
+      </div>
+
+      <!-- By-user breakdown -->
+      <div class="tcard" style="margin-bottom:16px">
+        <div class="tbar" style="font-weight:600;font-size:12px;color:var(--muted)">👥 По сотрудникам</div>
+        <table>
+          <thead><tr><th>Сотрудник</th><th>Результативных</th><th>Завершённых</th><th>Итого</th></tr></thead>
+          <tbody id="p-user-tb"><tr><td colspan="4" class="em">—</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Contact list -->
+      <div class="tcard">
+        <div class="tbar" style="font-weight:600;font-size:12px;color:var(--muted)">📋 Список контактов</div>
+        <div class="tscroll">
+          <table>
+            <thead><tr><th>Дата звонка</th><th>Имя</th><th>Телефон</th><th>Компания</th><th>Статус</th><th>Результат</th><th>Кто звонил</th></tr></thead>
+            <tbody id="ptb"><tr><td colspan="7" class="em">Выберите период выше</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div id="tab-users" class="h">
+      <div class="tcard">
+        <div class="tbar">
+          <button class="btn btn-p btn-sm" id="btn-add-u">+ Добавить пользователя</button>
+        </div>
+        <table>
+          <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Статус</th><th></th></tr></thead>
+          <tbody id="utb"><tr><td colspan="5" class="em">Загрузка…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AUDIT TAB -->
+    <div id="tab-audit" class="h">
+      <div class="tcard">
+        <div class="tbar">
+          <button class="btn btn-n btn-sm" id="btn-audit">↻ Обновить</button>
+        </div>
+        <div class="tscroll">
+          <table>
+            <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Детали</th></tr></thead>
+            <tbody id="atb"><tr><td colspan="4" class="em">Нажмите «Обновить»</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- ═══ MODAL: CALL ═══ -->
+<div id="m-call" class="ov h">
+  <div class="modal">
+    <div class="mh"><h2>Отметить звонок</h2><button class="mc-btn" data-cl="m-call">×</button></div>
+    <div class="mb">
+      <div class="info-box" id="call-info"></div>
+      <div class="sgr" id="sgr"></div>
+      <div class="fg"><label>Результат звонка</label>
+        <textarea id="call-res" rows="3" placeholder="Краткое описание…"></textarea></div>
+      <div class="fg h" id="cb-grp"><label>Дата и время перезвона</label>
+        <input type="datetime-local" id="cb-dt" style="width:100%"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-n" data-cl="m-call">Отмена</button>
+      <button class="btn btn-p" id="btn-call-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: CONTACT ═══ -->
+<div id="m-con" class="ov h">
+  <div class="modal">
+    <div class="mh"><h2 id="con-title">Добавить контакт</h2><button class="mc-btn" data-cl="m-con">×</button></div>
+    <div class="mb">
+      <div class="fg"><label>Имя</label><input id="c-nm" type="text" placeholder="Иванов Иван Иванович"></div>
+      <div class="fg"><label>Телефон *</label><input id="c-ph" type="text" placeholder="+7 (999) 123-45-67"></div>
+      <div class="fg"><label>Компания</label><input id="c-co" type="text"></div>
+      <div class="fg"><label>Должность</label><input id="c-pos" type="text"></div>
+      <div class="fg"><label>Тип</label>
+        <select id="c-tp"><option value="person">Физ. лицо</option><option value="company">Юр. лицо</option></select></div>
+      <div class="fg"><label>Комментарий</label><textarea id="c-cm" rows="2"></textarea></div>
+      <div id="con-err" class="err-msg h"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-n" data-cl="m-con">Отмена</button>
+      <button class="btn btn-p" id="btn-con-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: USER ═══ -->
+<div id="m-usr" class="ov h">
+  <div class="modal">
+    <div class="mh"><h2 id="usr-title">Добавить пользователя</h2><button class="mc-btn" data-cl="m-usr">×</button></div>
+    <div class="mb">
+      <div class="fg" id="u-lg-g"><label>Логин *</label><input id="u-lg" type="text" autocomplete="off"></div>
+      <div class="fg"><label>Имя</label><input id="u-fn" type="text" autocomplete="off"></div>
+      <div class="fg"><label>Роль</label>
+        <select id="u-rl">
+          <option value="specialist">Специалист</option>
+          <option value="manager">Менеджер</option>
+          <option value="admin">Администратор</option>
+          <option value="owner">Собственник</option>
+        </select></div>
+      <div class="fg"><label id="u-pw-lbl">Пароль *</label>
+        <input id="u-pw" type="password" autocomplete="new-password" placeholder="Минимум 4 символа"></div>
+      <div class="fg h" id="u-ac-g"><label>Активен</label>
+        <select id="u-ac"><option value="1">Да</option><option value="0">Нет</option></select></div>
+      <div id="usr-err" class="err-msg h"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-n" data-cl="m-usr">Отмена</button>
+      <button class="btn btn-p" id="btn-usr-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── CONSTANTS ────────────────────────────────────────────────────────
+const SL = {
+  new:'Новый', called:'Обзвонен', callback:'Перезвонить',
+  done:'Завершён', productive:'Результативный', irrelevant:'Не актуален',
+  no_answer:'Не отвечает', rude:'Грубый'
+};
+const SC = {
+  new:'#EFEFEF', called:'#FFF3CD', callback:'#FFF3CD',
+  done:'#D4EDDA', productive:'#A8D5B5',
+  irrelevant:'#F8D7DA', no_answer:'#F8D7DA', rude:'#F8D7DA'
+};
+const ST = {
+  new:'#555', called:'#856404', callback:'#856404',
+  done:'#155724', productive:'#155724',
+  irrelevant:'#721c24', no_answer:'#721c24', rude:'#721c24'
+};
+const RL = {owner:'Собственник',admin:'Администратор',manager:'Менеджер',specialist:'Специалист'};
+const STATUSES = ['new','called','callback','done','productive','irrelevant','no_answer','rude'];
+
+// ── STATE ────────────────────────────────────────────────────────────
+const S = {
+  token: localStorage.getItem('baza_tok'),
+  user: null,
+  contacts: [],
+  users: [],
+  sel: new Set(),
+  callId: null,
+  editConId: null,
+  editUsrId: null,
+};
+
+// ── API ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const h = {'Content-Type':'application/json'};
+  if (S.token) h['Authorization'] = 'Bearer ' + S.token;
+  const r = await fetch(path, {method, headers:h, body: body !== undefined ? JSON.stringify(body) : undefined});
+  if (r.status === 401) { doLogout(); throw new Error('Сессия истекла'); }
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.detail || 'Ошибка ' + r.status);
+  }
+  return r.json();
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────
+let _tt;
+function toast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + (type==='ok'?'ok':type==='err'?'err':'info');
+  clearTimeout(_tt); _tt = setTimeout(() => el.className = '', 3200);
+}
+
+// ── ESC ──────────────────────────────────────────────────────────────
+function e(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── AUTH ─────────────────────────────────────────────────────────────
+async function doLogin() {
+  const u = $('inp-u').value.trim(), p = $('inp-p').value;
+  const err = $('l-err'), btn = $('btn-login');
+  if (!u||!p) { show(err, 'Заполните все поля'); return; }
+  btn.disabled = true; btn.textContent = 'Вход…'; hide(err);
+  try {
+    const d = await api('POST', '/login', {username:u, password:p});
+    S.token = d.token;
+    S.user = {id:d.user_id, username:u, role:d.role, full_name:d.full_name};
+    localStorage.setItem('baza_tok', S.token);
+    showApp();
+  } catch(ex) { show(err, ex.message); }
+  finally { btn.disabled = false; btn.textContent = 'Войти'; }
+}
+
+function doLogout() {
+  S.token = null; S.user = null;
+  localStorage.removeItem('baza_tok');
+  hide($('app')); show($('login-screen'));
+  $('inp-p').value = '';
+}
+
+async function checkSession() {
+  if (!S.token) return false;
+  try { S.user = await api('GET','/auth/me'); return true; }
+  catch { localStorage.removeItem('baza_tok'); S.token = null; return false; }
+}
+
+// ── NAV ──────────────────────────────────────────────────────────────
+function showApp() {
+  hide($('login-screen')); show($('app'), true);
+  const isAdm = ['owner','admin'].includes(S.user.role);
+  const isOwn = S.user.role === 'owner';
+  $('uinfo').textContent = (S.user.full_name||S.user.username) + ' · ' + (RL[S.user.role]||S.user.role);
+  qAll('.adm').forEach(el => el.classList.toggle('h', !isAdm));
+  qAll('.own').forEach(el => el.classList.toggle('h', !isOwn));
+  switchTab('contacts');
+  loadContacts();
+}
+
+function switchTab(name) {
+  qAll('.nav-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab===name));
+  ['contacts','stats','productive','users','audit'].forEach(t => {
+    const el = $('tab-'+t); if(el) el.classList.toggle('h', t!==name);
+  });
+  if (name==='users') loadUsers();
+  if (name==='audit') loadAudit();
+  if (name==='productive' && !_prdLoaded) { setPrdPeriod(0,'Сегодня'); }
+}
+
+// ── CONTACTS ─────────────────────────────────────────────────────────
+async function loadContacts() {
+  const p = new URLSearchParams();
+  const st=$('f-st').value, tp=$('f-tp').value,
+        df=$('f-df').value, dt=$('f-dt').value, hi=$('f-hi').checked;
+  if(st) p.set('status_filter',st);
+  if(tp) p.set('type_filter',tp);
+  if(df) p.set('date_from',df);
+  if(dt) p.set('date_to',dt);
+  if(hi) p.set('hide_irrelevant','true');
+  $('ctb').innerHTML = '<tr><td colspan="12" class="em">Загрузка…</td></tr>';
+  try {
+    S.contacts = await api('GET', '/contacts?' + p);
+    S.sel.clear();
+    renderContacts();
+  } catch(ex) {
+    toast(ex.message, 'err');
+    $('ctb').innerHTML = `<tr><td colspan="12" class="em" style="color:var(--danger)">${e(ex.message)}</td></tr>`;
+  }
+}
+
+function filtered() {
+  const q = $('f-q').value.toLowerCase().trim();
+  if (!q) return S.contacts;
+  return S.contacts.filter(c =>
+    (c.name||'').toLowerCase().includes(q) ||
+    (c.phone||'').toLowerCase().includes(q) ||
+    (c.company||'').toLowerCase().includes(q)
+  );
+}
+
+function renderContacts() {
+  const list = filtered();
+  const isAdm = ['owner','admin'].includes(S.user.role);
+  $('c-cnt').textContent = `Показано: ${list.length} из ${S.contacts.length}`;
+  $('chk-all').checked = false;
+
+  if (!list.length) {
+    $('ctb').innerHTML = '<tr><td colspan="12" class="em">Контакты не найдены</td></tr>';
+    updateBulk(); return;
+  }
+
+  $('ctb').innerHTML = list.map((c, i) => {
+    const bg = SC[c.status]||'#fff', tc = ST[c.status]||'#333';
+    const lbl = SL[c.status] || c.status || '—';
+    const cbdt = (c.callback_datetime||'').slice(0,16).replace('T',' ');
+    const cd = (c.call_date||'').slice(0,16);
+    const caller = c.caller_name || c.caller_username || '—';
+    const sel = S.sel.has(c.id);
+    return `<tr data-id="${c.id}" class="${sel?'sel':''}">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${sel?'checked':''} onchange="toggleSel(${c.id},this.checked)" style="accent-color:var(--primary);cursor:pointer"></td>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td title="${e(c.name)}">${e(c.name)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td onclick="event.stopPropagation()"><a href="tel:${e(c.phone)}" style="color:inherit">${e(c.phone)}</a></td>
+      <td title="${e(c.company)}">${e(c.company)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td title="${e(c.position)}">${e(c.position)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td><span class="sb" style="background:${bg};color:${tc}">${lbl}</span></td>
+      <td title="${e(c.call_result)}">${e(c.call_result)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="color:var(--muted)">${cbdt||'—'}</td>
+      <td style="color:var(--muted)">${cd||'—'}</td>
+      <td style="color:var(--muted)">${e(caller)}</td>
+      <td onclick="event.stopPropagation()"><div class="ra">
+        <button class="btn btn-sm btn-n" title="Звонок" onclick="openCall(${c.id})">📞</button>
+        ${isAdm?`<button class="btn btn-sm btn-n" title="Изменить" onclick="openEditCon(${c.id})">✏️</button>`:''}
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  qAll('#ctb tr[data-id]').forEach(tr =>
+    tr.addEventListener('click', () => openCall(+tr.dataset.id))
+  );
+  updateBulk();
+}
+
+function toggleSel(id, on) {
+  on ? S.sel.add(id) : S.sel.delete(id);
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  if(tr) tr.classList.toggle('sel', on);
+  updateBulk();
+}
+
+function updateBulk() {
+  const isAdm = ['owner','admin'].includes(S.user?.role);
+  const btn = $('btn-del-sel');
+  const show_ = isAdm && S.sel.size > 0;
+  btn.classList.toggle('h', !show_);
+  if (show_) btn.textContent = `Удалить (${S.sel.size})`;
+}
+
+async function deleteSelected() {
+  if (!confirm(`Удалить ${S.sel.size} контакт(ов)?`)) return;
+  try {
+    await api('DELETE', '/contacts', {ids:[...S.sel]});
+    toast(`Удалено ${S.sel.size}`, 'ok'); S.sel.clear(); loadContacts();
+  } catch(ex) { toast(ex.message,'err'); }
+}
+
+// ── CALL MODAL ────────────────────────────────────────────────────────
+function openCall(id) {
+  const c = S.contacts.find(x=>x.id===id); if(!c) return;
+  S.callId = id;
+  $('call-info').innerHTML =
+    `<strong>${e(c.name)||'—'}</strong>` +
+    (c.phone ? `<br><a href="tel:${e(c.phone)}" style="color:#2980B9">${e(c.phone)}</a>` : '') +
+    (c.company ? `<br><span style="color:var(--muted)">${e(c.company)}</span>` : '') +
+    (c.position ? ` — ${e(c.position)}` : '') +
+    (c.comment ? `<br><em style="color:var(--muted)">${e(c.comment)}</em>` : '');
+
+  $('sgr').innerHTML = STATUSES.map(s => `
+    <div>
+      <input type="radio" name="cst" id="cst-${s}" value="${s}" class="sr" ${c.status===s?'checked':''}>
+      <label for="cst-${s}" class="sl" style="background:${SC[s]};color:${ST[s]}">${SL[s]}</label>
+    </div>`).join('');
+
+  $('call-res').value = c.call_result||'';
+  $('cb-dt').value = c.callback_datetime||'';
+
+  function updCb() {
+    const sel = document.querySelector('input[name="cst"]:checked');
+    $('cb-grp').classList.toggle('h', !sel || sel.value!=='callback');
+  }
+  $('sgr').querySelectorAll('input').forEach(r => r.addEventListener('change', updCb));
+  updCb();
+  openM('m-call');
+}
+
+async function saveCall() {
+  const sel = document.querySelector('input[name="cst"]:checked');
+  if (!sel) { toast('Выберите статус','err'); return; }
+  const btn = $('btn-call-save'); btn.disabled = true;
+  try {
+    await api('POST', `/contacts/${S.callId}/call`, {
+      status: sel.value,
+      call_result: $('call-res').value.trim(),
+      callback_datetime: sel.value==='callback' ? $('cb-dt').value : ''
+    });
+    toast('Звонок сохранён','ok'); closeM('m-call'); loadContacts();
+  } catch(ex) { toast(ex.message,'err'); }
+  finally { btn.disabled = false; }
+}
+
+// ── CONTACT MODAL ─────────────────────────────────────────────────────
+function openAddCon() {
+  S.editConId = null;
+  $('con-title').textContent = 'Добавить контакт';
+  ['c-nm','c-ph','c-co','c-pos','c-cm'].forEach(id => $(id).value='');
+  $('c-tp').value='person'; hide($('con-err')); openM('m-con');
+}
+
+function openEditCon(id) {
+  const c = S.contacts.find(x=>x.id===id); if(!c) return;
+  S.editConId = id;
+  $('con-title').textContent = 'Редактировать контакт';
+  $('c-nm').value=c.name||''; $('c-ph').value=c.phone||'';
+  $('c-co').value=c.company||''; $('c-pos').value=c.position||'';
+  $('c-tp').value=c.contact_type||'person'; $('c-cm').value=c.comment||'';
+  hide($('con-err')); openM('m-con');
+}
+
+async function saveCon() {
+  const ph = $('c-ph').value.trim();
+  if(!ph) { show($('con-err'),'Телефон обязателен'); return; }
+  const btn = $('btn-con-save'); btn.disabled=true;
+  try {
+    const d = {name:$('c-nm').value.trim(), phone:ph, company:$('c-co').value.trim(),
+      position:$('c-pos').value.trim(), contact_type:$('c-tp').value, comment:$('c-cm').value.trim()};
+    if (S.editConId) { await api('PUT',`/contacts/${S.editConId}`,d); toast('Контакт обновлён','ok'); }
+    else             { await api('POST','/contacts',d); toast('Контакт добавлен','ok'); }
+    closeM('m-con'); loadContacts();
+  } catch(ex) { show($('con-err'), ex.message); }
+  finally { btn.disabled=false; }
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────
+async function loadStats() {
+  const p = new URLSearchParams();
+  const df=$('s-df').value, dt=$('s-dt').value;
+  if(df) p.set('date_from',df); if(dt) p.set('date_to',dt);
+  try {
+    const d = await api('GET','/stats?'+p);
+    $('st-tot').textContent=d.total; $('st-pro').textContent=d.productive; $('st-cb').textContent=d.callback;
+    if(!d.by_user.length) { $('stb').innerHTML='<tr><td colspan="5" class="em">Нет данных</td></tr>'; return; }
+    $('stb').innerHTML = d.by_user.map(u => {
+      const pct = u.calls>0 ? Math.round(u.productive/u.calls*100) : 0;
+      return `<tr><td>${e(u.name)}</td><td>${u.calls}</td><td>${u.productive}</td><td>${u.callback}</td><td>${pct}%</td></tr>`;
+    }).join('');
+  } catch(ex) { toast(ex.message,'err'); }
+}
+
+// ── USERS ─────────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    S.users = await api('GET','/users');
+    $('utb').innerHTML = S.users.map(u => `
+      <tr>
+        <td>${e(u.username)}</td>
+        <td>${e(u.full_name)||'—'}</td>
+        <td>${RL[u.role]||u.role}</td>
+        <td>${u.active?'<span style="color:var(--success)">Активен</span>':'<span style="color:var(--danger)">Откл.</span>'}</td>
+        <td><div class="ra" style="opacity:1">
+          <button class="btn btn-sm btn-n" onclick="openEditUsr(${u.id})">✏️ Изменить</button>
+        </div></td>
+      </tr>`).join('');
+  } catch(ex) { toast(ex.message,'err'); }
+}
+
+function openAddUsr() {
+  S.editUsrId = null;
+  $('usr-title').textContent='Добавить пользователя';
+  ['u-lg','u-fn','u-pw'].forEach(id=>$(id).value='');
+  $('u-rl').value='specialist'; $('u-pw-lbl').textContent='Пароль *';
+  $('u-pw').placeholder='Минимум 4 символа';
+  show($('u-lg-g'),true); hide($('u-ac-g')); hide($('usr-err')); openM('m-usr');
+}
+
+function openEditUsr(id) {
+  const u = S.users.find(x=>x.id===id); if(!u) return;
+  S.editUsrId = id;
+  $('usr-title').textContent='Редактировать пользователя';
+  $('u-fn').value=u.full_name||''; $('u-rl').value=u.role; $('u-pw').value='';
+  $('u-pw-lbl').textContent='Новый пароль'; $('u-pw').placeholder='Оставьте пустым, чтобы не менять';
+  $('u-ac').value=u.active?'1':'0';
+  hide($('u-lg-g')); show($('u-ac-g'),true); hide($('usr-err')); openM('m-usr');
+}
+
+async function saveUsr() {
+  const btn=$('btn-usr-save'), err=$('usr-err');
+  hide(err); btn.disabled=true;
+  try {
+    if (S.editUsrId) {
+      const pw = $('u-pw').value;
+      await api('PUT',`/users/${S.editUsrId}`,{
+        full_name:$('u-fn').value.trim(), role:$('u-rl').value,
+        active:+$('u-ac').value, password_hash: pw||null
+      });
+      toast('Пользователь обновлён','ok');
+    } else {
+      const lg=$('u-lg').value.trim(), pw=$('u-pw').value;
+      if (!lg) { show(err,'Логин обязателен'); return; }
+      if (!pw) { show(err,'Пароль обязателен'); return; }
+      await api('POST','/users',{
+        username:lg, password_hash:pw,
+        role:$('u-rl').value, full_name:$('u-fn').value.trim()
+      });
+      toast('Пользователь создан','ok');
+    }
+    closeM('m-usr'); loadUsers();
+  } catch(ex) { show(err,ex.message); }
+  finally { btn.disabled=false; }
+}
+
+// ── PRODUCTIVE ────────────────────────────────────────────────────────
+let _prdLoaded = false;
+
+function setPrdPeriod(days, lbl) {
+  const today = new Date();
+  const from = new Date(today);
+  from.setDate(today.getDate() - days);
+  $('p-df').value = from.toISOString().slice(0,10);
+  $('p-dt').value = today.toISOString().slice(0,10);
+  qAll('.prd-btn').forEach(b => b.classList.toggle('active', b.dataset.lbl===lbl));
+  loadProductive(lbl);
+}
+
+async function loadProductive(periodLbl) {
+  const df = $('p-df').value, dt = $('p-dt').value;
+  const lbl = periodLbl || (df && dt ? df + ' — ' + dt : df || dt || '');
+  $('p-period-lbl').textContent = lbl || '—';
+  $('ptb').innerHTML = '<tr><td colspan="7" class="em">Загрузка…</td></tr>';
+  $('p-user-tb').innerHTML = '<tr><td colspan="4" class="em">Загрузка…</td></tr>';
+
+  const p = new URLSearchParams();
+  if (df) p.set('date_from', df);
+  if (dt) p.set('date_to', dt);
+
+  try {
+    const all = await api('GET', '/contacts?' + p);
+    _prdLoaded = true;
+
+    const prod = all.filter(c => c.status === 'productive');
+    const done = all.filter(c => c.status === 'done');
+    const list = [...prod, ...done].sort((a,b) => (b.call_date||'').localeCompare(a.call_date||''));
+
+    $('p-cnt-prod').textContent = prod.length;
+    $('p-cnt-done').textContent = done.length;
+
+    // By-user breakdown
+    const byUser = {};
+    list.forEach(c => {
+      const name = c.caller_name || c.caller_username || '—';
+      if (!byUser[name]) byUser[name] = {productive:0, done:0};
+      if (c.status==='productive') byUser[name].productive++;
+      if (c.status==='done') byUser[name].done++;
+    });
+    const userRows = Object.entries(byUser).sort((a,b) => (b[1].productive+b[1].done)-(a[1].productive+a[1].done));
+    $('p-user-tb').innerHTML = userRows.length
+      ? userRows.map(([name,s]) => `<tr>
+          <td>${e(name)}</td>
+          <td style="color:var(--success);font-weight:600">${s.productive}</td>
+          <td>${s.done}</td>
+          <td style="font-weight:600">${s.productive+s.done}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="em">Нет данных</td></tr>';
+
+    // Contact list
+    if (!list.length) {
+      $('ptb').innerHTML = '<tr><td colspan="7" class="em">Нет результативных звонков за период</td></tr>';
+      return;
+    }
+    $('ptb').innerHTML = list.map(c => {
+      const cd = (c.call_date||'').slice(0,16).replace('T',' ');
+      const caller = c.caller_name || c.caller_username || '—';
+      const bg=SC[c.status]||'#fff', tc=ST[c.status]||'#333';
+      return `<tr>
+        <td style="color:var(--muted);white-space:nowrap">${cd||'—'}</td>
+        <td title="${e(c.name)}">${e(c.name)||'—'}</td>
+        <td><a href="tel:${e(c.phone)}" style="color:inherit">${e(c.phone)}</a></td>
+        <td title="${e(c.company)}">${e(c.company)||'—'}</td>
+        <td><span class="sb" style="background:${bg};color:${tc}">${SL[c.status]||c.status}</span></td>
+        <td title="${e(c.call_result)}">${e(c.call_result)||'—'}</td>
+        <td style="color:var(--muted)">${e(caller)}</td>
+      </tr>`;
+    }).join('');
+  } catch(ex) {
+    toast(ex.message,'err');
+    $('ptb').innerHTML = `<tr><td colspan="7" class="em" style="color:var(--danger)">${e(ex.message)}</td></tr>`;
+  }
+}
+
+// ── AUDIT ─────────────────────────────────────────────────────────────
+async function loadAudit() {
+  try {
+    const logs = await api('GET','/audit?limit=300');
+    if (!logs.length) { $('atb').innerHTML='<tr><td colspan="4" class="em">Нет записей</td></tr>'; return; }
+    $('atb').innerHTML = logs.map(l=>`
+      <tr>
+        <td style="white-space:nowrap;color:var(--muted)">${(l.ts||'').slice(0,16)}</td>
+        <td>${e(l.full_name||l.username||'—')}</td>
+        <td>${e(l.action)}</td>
+        <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e(l.details)}">${e(l.details)||'—'}</td>
+      </tr>`).join('');
+  } catch(ex) { toast(ex.message,'err'); }
+}
+
+// ── MODAL UTILS ───────────────────────────────────────────────────────
+function openM(id) { $(id).classList.remove('h'); }
+function closeM(id) { $(id).classList.add('h'); }
+
+// ── DOM UTILS ─────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function qAll(sel) { return document.querySelectorAll(sel); }
+function hide(el, ...rest) {
+  if (typeof el==='string') el=$( el);
+  el?.classList.add('h');
+}
+function show(el, isEl) {
+  if (typeof el==='string') { el=$(el); isEl=true; }
+  if (!el) return;
+  if (isEl===true) el.classList.remove('h');
+  else el.textContent = isEl; // isEl is actually the message string
+  el.classList.remove('h');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  // Login
+  $('btn-login').addEventListener('click', doLogin);
+  $('inp-p').addEventListener('keydown', ev => { if(ev.key==='Enter') doLogin(); });
+  $('inp-u').addEventListener('keydown', ev => { if(ev.key==='Enter') $('inp-p').focus(); });
+  $('btn-out').addEventListener('click', doLogout);
+
+  // Nav tabs
+  qAll('.nav-tab[data-tab]').forEach(btn =>
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+  // Modal close
+  qAll('[data-cl]').forEach(btn =>
+    btn.addEventListener('click', () => closeM(btn.dataset.cl)));
+  qAll('.ov').forEach(ov =>
+    ov.addEventListener('click', ev => { if(ev.target===ov) ov.classList.add('h'); }));
+
+  // Contacts
+  $('btn-ref').addEventListener('click', loadContacts);
+  $('f-q').addEventListener('input', renderContacts);
+  ['f-st','f-tp','f-df','f-dt','f-hi'].forEach(id =>
+    $(id)?.addEventListener('change', loadContacts));
+  $('chk-all').addEventListener('change', ev => {
+    const list=filtered();
+    if(ev.target.checked) list.forEach(c=>S.sel.add(c.id));
+    else S.sel.clear();
+    renderContacts();
+    $('chk-all').checked=ev.target.checked;
+  });
+  $('btn-add')?.addEventListener('click', openAddCon);
+  $('btn-del-sel').addEventListener('click', deleteSelected);
+
+  // Call modal
+  $('btn-call-save').addEventListener('click', saveCall);
+
+  // Contact modal
+  $('btn-con-save').addEventListener('click', saveCon);
+
+  // Stats
+  $('btn-stats').addEventListener('click', loadStats);
+
+  // Users
+  $('btn-add-u').addEventListener('click', openAddUsr);
+  $('btn-usr-save').addEventListener('click', saveUsr);
+
+  // Productive
+  qAll('.prd-btn').forEach(btn =>
+    btn.addEventListener('click', () => setPrdPeriod(+btn.dataset.days, btn.dataset.lbl)));
+  $('btn-p-custom').addEventListener('click', () => {
+    qAll('.prd-btn').forEach(b => b.classList.remove('active'));
+    loadProductive();
+  });
+
+  // Audit
+  $('btn-audit').addEventListener('click', loadAudit);
+
+  // Keyboard shortcut: Esc closes top modal
+  document.addEventListener('keydown', ev => {
+    if(ev.key!=='Escape') return;
+    const open=[...qAll('.ov:not(.h)')];
+    if(open.length) open[open.length-1].classList.add('h');
+  });
+
+  // Check existing session
+  if (S.token && await checkSession()) { showApp(); return; }
+  $('login-screen').classList.remove('h');
+});
+</script>
+</body>
+</html>

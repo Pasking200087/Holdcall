@@ -125,9 +125,11 @@ def update_contact(contact_id: int, name: str, phone: str, company: str,
     })
 
 
-def mark_called(contact_id: int, status: str, call_result: str, user_id: int) -> None:
+def mark_called(contact_id: int, status: str, call_result: str, user_id: int,
+                callback_datetime: str = "") -> None:
     _post(f"/contacts/{contact_id}/call",
-          {"status": status, "call_result": call_result})
+          {"status": status, "call_result": call_result,
+           "callback_datetime": callback_datetime})
 
 
 def delete_contacts_bulk(ids: list[int]) -> None:
@@ -136,6 +138,26 @@ def delete_contacts_bulk(ids: list[int]) -> None:
 
 def import_contacts_bulk(rows: list[dict], user_id: int) -> int:
     result = _post("/contacts/import", {"rows": rows})
+    return result["count"]
+
+
+def get_stats(date_from: str = "", date_to: str = "") -> dict:
+    return _get("/stats", date_from=date_from, date_to=date_to)
+
+
+def get_pending_reminders() -> list:
+    try:
+        return _get("/contacts/reminders")
+    except Exception:
+        return []
+
+
+def get_duplicates() -> list:
+    return _get("/contacts/duplicates")
+
+
+def merge_contacts(keep_id: int, delete_ids: list) -> int:
+    result = _post("/contacts/merge", {"keep_id": keep_id, "delete_ids": delete_ids})
     return result["count"]
 
 
