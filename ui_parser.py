@@ -53,10 +53,28 @@ class ParseWorker(QThread):
 
     def run(self):
         try:
-            rows = parse_excel(self.path)
+            existing_phones = self._load_existing_phones()
+            rows = parse_excel(self.path, existing_phones=existing_phones)
             self.done.emit(rows)
         except Exception as e:
             self.error.emit(str(e))
+
+    @staticmethod
+    def _load_existing_phones() -> set:
+        """Собрать все номера уже существующих контактов в базе."""
+        import database as db
+        phones = set()
+        try:
+            for c in db.get_contacts():
+                for p in (c.get("phone") or "").split("\n"):
+                    p = p.strip()
+                    if p:
+                        phones.add(p)
+        except Exception:
+            # Базу прочитать не удалось — предпросмотр всё равно показываем,
+            # финальная проверка дублей при импорте останется
+            pass
+        return phones
 
 
 class ParserDialog(QDialog):
@@ -309,7 +327,12 @@ class ParserDialog(QDialog):
                 return item
 
             status_lbl = ROW_STATUS_LABELS.get(row.status, row.status)
-            dup_hint = f" (= строка {row.dup_of})" if row.dup_of else ""
+            if row.dup_db:
+                dup_hint = " (уже в базе)"
+            elif row.dup_of:
+                dup_hint = f" (= строка {row.dup_of})"
+            else:
+                dup_hint = ""
 
             self.table.setItem(i, _COL_NUM,  cell(row.row_num))
             self.table.setItem(i, _COL_STS,  cell(status_lbl + dup_hint))

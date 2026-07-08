@@ -186,14 +186,18 @@ class ParsedRow:
     contact_type: str = "person"  # person / company
     status:       str = ROW_OK
     dup_of:       int = 0      # row_num оригинала если дубль
+    dup_db:       bool = False # дубль с уже существующим контактом в базе
 
 
 # ─── ПАРСЕР ───────────────────────────────────────────────────────────────────
 
-def parse_excel(path: str) -> list[ParsedRow]:
+def parse_excel(path: str, existing_phones: Optional[set] = None) -> list[ParsedRow]:
     """
     Прочитать файл и вернуть список ParsedRow.
     Все строки включены (для предпросмотра), статус у каждой.
+
+    existing_phones — нормализованные номера из базы; совпадающие строки
+    помечаются как дубликат с dup_db=True.
     """
     import openpyxl
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -201,6 +205,7 @@ def parse_excel(path: str) -> list[ParsedRow]:
 
     results: list[ParsedRow] = []
     seen_phones: dict[str, int] = {}  # phone → row_num первого вхождения
+    existing_phones = existing_phones or set()
 
     for row_num, row in enumerate(ws.iter_rows(values_only=True), start=1):
         # Дополнить до 5 колонок
@@ -290,6 +295,15 @@ def parse_excel(path: str) -> list[ParsedRow]:
 
         # Проверка дубликата по первому номеру
         first_phone = phone.split("\n")[0]
+        if first_phone in existing_phones:
+            # Уже есть в базе
+            results.append(ParsedRow(
+                row_num=row_num, name=name, phone=phone, phone_raw=phone_raw_str,
+                company=company, position=position, call_note=call_note,
+                contact_type=_forced_ctype or detect_contact_type(company, position),
+                status=ROW_DUPLICATE, dup_db=True
+            ))
+            continue
         if first_phone in seen_phones:
             results.append(ParsedRow(
                 row_num=row_num, name=name, phone=phone, phone_raw=phone_raw_str,
